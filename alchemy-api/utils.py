@@ -9,10 +9,9 @@ _logger = logging.getLogger(__name__)
 
 class DbExecption(Exception):
     def __init__(self, rsp):
-        self.args = (rsp.text,)
+        super().__init__(rsp.text)
         self.status_code = rsp.status_code
-        if getattr(rsp, "trace") is False:
-            self.trace = None
+        self.trace = None if rsp.trace is False else rsp.trace
     
     def __str__(self) -> str:
         return ", ".join(self.args)
@@ -117,38 +116,33 @@ def _read_file_reverse(file_path):
     with open(file_path, 'rb') as f:
         buffer_size = 8192  # Size of chunks to read
         f.seek(0, 2)  # Go to the end of the file
-        end_of_file = f.tell()
-        buffer = bytearray()
-        pointer_location = end_of_file
- 
+        pointer_location = f.tell()
+        buffer = b''
+
         while pointer_location > 0:
-            pointer_location = max(0, pointer_location - buffer_size)
+            read_size = min(buffer_size, pointer_location)
+            pointer_location -= read_size
             f.seek(pointer_location)
-            buffer.extend(f.read(min(buffer_size, end_of_file - pointer_location)))
+            # The new chunk goes before what is left from the previous one
+            buffer = f.read(read_size) + buffer
             lines = buffer.split(b'\n')
-            
-            # Reverse iterate over the lines
+
             if pointer_location > 0:
-                # The last line in the buffer might be incomplete, keep it for the next chunk
+                # The first line in the buffer might be incomplete, keep it for the next chunk
                 buffer = lines[0]
                 lines = lines[1:]
             else:
-                buffer = bytearray()
- 
+                buffer = b''
+
             for line in reversed(lines):
                 yield line.decode('utf-8')
- 
-        # Yield the remaining buffered line if any
-        if buffer:
-            yield buffer.decode('utf-8')
 
 def read_file_reverse(file_path:str, n_line:int=None):
     lines = []
-    n_line = n_line or -1
-    for idx, line in enumerate(_read_file_reverse(file_path)):
+    for line in _read_file_reverse(file_path):
         if line:
             lines.append(line)
-        if idx == n_line:
+        if n_line and len(lines) >= n_line:
             break
     return lines
 

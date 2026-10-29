@@ -15,14 +15,14 @@ from .utils import DbExecption, error, to_dict
 from .conexion import Conexion
 
 class AsyncConexion(Conexion):
-    def __init__(self, cnx_data, *, cnx_data_extra:dict={}, show_query:bool=False, modifiers:dict={}, config_log:dict={}, _raise:bool=True, engine=None, sess_maker=None) -> None:
+    def __init__(self, cnx_data, *, cnx_data_extra:dict=None, show_query:bool=False, modifiers:dict=None, config_log:dict=None, _raise:bool=True, engine=None, sess_maker=None) -> None:
         if not engine:
-            self.__engine = create_async_engine(cnx_data, **cnx_data_extra)
+            engine = create_async_engine(cnx_data, **(cnx_data_extra or {}))
         
         if not sess_maker:
-            self.__sessionmaker = async_sessionmaker(self.__engine)
+            sess_maker = async_sessionmaker(engine)
         
-        super().__init__(cnx_data, cnx_data_extra=cnx_data_extra, show_query=show_query, modifiers=modifiers, config_log=config_log, _raise=_raise, engine=self.__engine, sess_maker=self.__sessionmaker)
+        super().__init__(cnx_data, cnx_data_extra=cnx_data_extra, show_query=show_query, modifiers=modifiers, config_log=config_log, _raise=_raise, engine=engine, sess_maker=sess_maker)
 
     @classmethod
     async def create(cls, cnx_data, **kwargs):
@@ -33,7 +33,7 @@ class AsyncConexion(Conexion):
     async def async_post_conexion(self):
         """Call after __init__ to do async reflection"""
         self._metadata = MetaData()
-        async with self.__engine.connect() as conn:
+        async with self._engine.connect() as conn:
             self._views = await conn.run_sync(
                 lambda sync_conn: db_inspect(sync_conn).get_view_names()
             )
@@ -43,14 +43,14 @@ class AsyncConexion(Conexion):
         return self
 
     @asynccontextmanager
-    async def __Session(self):
-        async with self.__sessionmaker() as session:
+    async def _async_session(self):
+        async with self._sessionmaker() as session:
             try:
                 yield session
             except Exception as e:
                 await session.rollback()
                 str_error = str(e)
-                self.__logger.error(str_error.replace("\n", "\\n"))
+                self._logger.error(str_error.replace("\n", "\\n"))
                 raise DbExecption(error(str_error, 400)) from None
             finally:
                 await session.close()
@@ -99,7 +99,7 @@ class AsyncConexion(Conexion):
         if limit and not count:
             statement = self._limit(statement, limit)
 
-        async with self.__Session() as session:
+        async with self._async_session() as session:
             self._show_query(statement)
             result = await session.execute(statement)
             result = result.all()
@@ -127,7 +127,7 @@ class AsyncConexion(Conexion):
             data = self._to_lower_cols(data)
         
         result = []
-        async with self.__Session() as session:
+        async with self._async_session() as session:
             for row in data:
                 # for col_k, col_v in row.items():
                     # if isinstance(col_v, dict) and "dt_format" in col_v:
@@ -137,7 +137,7 @@ class AsyncConexion(Conexion):
                     for col_k, col_v in row.items()
                 }
                 _statement = statement.values(row)
-                self._show_query(statement, bindparams=row)
+                self._show_query(_statement, bindparams=row)
                 row_result = await session.execute(_statement)
                 result.append(row_result)
             await session.commit()
@@ -150,6 +150,7 @@ class AsyncConexion(Conexion):
         _table = self._get_table(table)
 
         statement = db_delete(_table)
+        self._require_filterby(filterby)
         if self._lower_cols:
             filterby = self._to_lower_cols(filterby)
         cols_statement = self._cols_in_filter(filterby)
@@ -159,8 +160,9 @@ class AsyncConexion(Conexion):
             cols_error = list(filter(lambda x: x not in columns, cols_statement))
             if any(cols_error): raise DbExecption(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
         statement = self._filterby(_table, statement, columns, filterby)
+        self._require_where(statement)
 
-        async with self.__Session() as session:
+        async with self._async_session() as session:
             self._show_query(statement)
             result = await session.execute(statement)
             await session.commit()
@@ -171,6 +173,7 @@ class AsyncConexion(Conexion):
         _table = self._get_table(table)
 
         statement = db_update(_table)
+        self._require_filterby(filterby)
         if self._lower_cols:
             filterby = self._to_lower_cols(filterby)
             data = self._to_lower_cols(data)
@@ -182,6 +185,7 @@ class AsyncConexion(Conexion):
             if any(cols_error): raise DbExecption(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
 
         statement = self._filterby(_table, statement, columns, filterby)
+        self._require_where(statement)
         for col_k, col_v in data.items():
             if isinstance(col_v, dict) and "dt_format" in col_v:
                 data[col_k] = self._to_datetime(col_v)
@@ -195,7 +199,7 @@ class AsyncConexion(Conexion):
         """
         
         statement = statement.values(data)
-        async with self.__Session() as session:
+        async with self._async_session() as session:
             self._show_query(statement)
             result = await session.execute(statement)
             await session.commit()
@@ -207,7 +211,7 @@ class AsyncConexion(Conexion):
             bind = {}
         if isinstance(statement, str):
             statement = TextClause(statement)
-        async with self.__Session() as session:
+        async with self._async_session() as session:
             ## TODO
             self._show_query(statement, bindparams=bind)
             ## TODO

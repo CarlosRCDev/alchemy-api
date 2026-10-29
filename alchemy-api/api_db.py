@@ -55,7 +55,7 @@ def delete():
     table = db_data.pop("table", None)
     filterby = db_data.pop("filterby", None)
     
-    if not table: raise DbExecption(error("Not data in post", 400)) from None
+    if not table: raise DbExecption(error("Not table in post", 400)) from None
     if not filterby: raise DbExecption(error("Not filterby in post", 400)) from None
     result_db = current_app.config["CNX"].delete(table=table, filterby=filterby)
 
@@ -69,6 +69,7 @@ def update():
 
     if not table: raise DbExecption(error("Not table in post", 400)) from None
     if not data: raise DbExecption(error("Not data in post", 400)) from None
+    if not db_data.get("filterby"): raise DbExecption(error("Not filterby in post", 400)) from None
     
     result_db = current_app.config["CNX"].update(table=table, data=data, **db_data)
     
@@ -93,6 +94,9 @@ def schema():
 
 @api_db.route('/sql', methods=['POST'])
 def sql():
+    # Raw SQL is only allowed when the app enables it explicitly
+    if not current_app.config.get("DB_ALLOW_RAW_SQL", False):
+        raise DbExecption(error("Endpoint /sql disabled, set DB_ALLOW_RAW_SQL in app config", 403)) from None
     db_data = request.json
     statement = db_data.get("statement", None)
     if not statement: raise DbExecption(error("Not statement in post", 400)) from None
@@ -123,7 +127,7 @@ def log_date_reverse(date, n_line=None):
     if n_line:
         try:
             n_line = int(n_line)
-        except:
+        except ValueError:
             raise DbExecption(error(f"Not valid n_line in URL, must be integer, value: {n_line}", 400)) from None
     return jsonify(current_app.config["CNX"].date_logs_reverse(date, n_line))
 

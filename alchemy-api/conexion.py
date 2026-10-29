@@ -64,36 +64,37 @@ def _configure_logger(config_log):
 
 
 class Conexion:
-    def __init__(self, cnx_data, *, cnx_data_extra:dict={}, show_query:bool=False, modifiers:dict={}, config_log:dict={}, _raise:bool=True, engine=None, sess_maker=None) -> None:
+    def __init__(self, cnx_data, *, cnx_data_extra:dict=None, show_query:bool=False, modifiers:dict=None, config_log:dict=None, _raise:bool=True, engine=None, sess_maker=None) -> None:
+        modifiers = modifiers or {}
         self.show_query = show_query
         self._raise = _raise
         if engine:
-            self.__engine = engine
+            self._engine = engine
         else:
-            self.__engine = create_engine(cnx_data, **cnx_data_extra)
+            self._engine = create_engine(cnx_data, **(cnx_data_extra or {}))
 
         if sess_maker:
-            self.__sessionmaker = sess_maker
+            self._sessionmaker = sess_maker
         else:    
-            self.__sessionmaker = sessionmaker(self.__engine)
+            self._sessionmaker = sessionmaker(self._engine)
         
-        self.__log_path = None
-        self.__logger = logging.getLogger(__name__)
+        self._log_path = None
+        self._logger = logging.getLogger(__name__)
         if config_log:
-            self.__logger, self.__log_path = _configure_logger(config_log)
+            self._logger, self._log_path = _configure_logger(config_log)
 
         self._lower_table = modifiers.get("lower_table", False) # Transform table input to lowercase, oracle default
         self._lower_cols = modifiers.get("lower_cols", False) # Transform columns input to lowercase, oracle default 
         self._ret_upper_table = modifiers.get("ret_upper_table", False) # Transform return table in capital case
         self._ret_upper_cols = modifiers.get("ret_upper_cols", False) # Transform return columns in capital case
         
-        if isinstance(self.__sessionmaker, sessionmaker):
+        if isinstance(self._sessionmaker, sessionmaker):
             self.post_conexion()
         
     def post_conexion(self):
         self._metadata = MetaData()
-        self._views = db_inspect(self.__engine).get_view_names()
-        self._metadata.reflect(self.__engine, views=True)
+        self._views = db_inspect(self._engine).get_view_names()
+        self._metadata.reflect(self._engine, views=True)
     
     @property
     def metadata(self):
@@ -101,20 +102,20 @@ class Conexion:
 
     # @property
     # def engine(self):
-    #     return self.__engine
+    #     return self._engine
 
     @property
     def logger(self):
-        return self.__logger
+        return self._logger
     
     @contextmanager
-    def __Session(self):
-        with self.__sessionmaker() as session:
+    def _session(self):
+        with self._sessionmaker() as session:
             try:
                 yield session
             except Exception as e:
                 str_error = str(e)
-                self.__logger.error(str_error.replace("\n", "\\n"))
+                self._logger.error(str_error.replace("\n", "\\n"))
                 raise DbExecption(error(str_error, 400)) from None
             finally:
                 session.close()
@@ -158,9 +159,9 @@ class Conexion:
         """
         Populate by list of names
         """
-        with self.__Session():
+        with self._session():
             for table in tables_:
-                Table(table, self._metadata, autoload_with=self.__engine)
+                Table(table, self._metadata, autoload_with=self._engine)
     
     def select(self, table:str, *, colset:list=None, filterby:dict=None, orderby:dict=None, offset:int=None,limit:float=None, count:bool=False, send_colnames:bool=True, dt_format:str=None, **kwargs):
         _table = self._get_table(table)
@@ -206,7 +207,7 @@ class Conexion:
         if limit and not count:
             statement = self._limit(statement, limit)
 
-        with self.__Session() as session:
+        with self._session() as session:
             self._show_query(statement)
             result = session.execute(statement).all()
         if dt_format:
@@ -233,13 +234,13 @@ class Conexion:
             data = self._to_lower_cols(data)
         
         result = []
-        with self.__Session() as session:
+        with self._session() as session:
             for row in data:
                 for col_k, col_v in row.items():
                     if isinstance(col_v, dict) and "dt_format" in col_v:
                         row[col_k] = self._to_datetime(col_v)
                 _statement = statement.values(row)
-                self._show_query(statement, bindparams=row)
+                self._show_query(_statement, bindparams=row)
                 row_result = session.execute(_statement)
                 result.append(row_result)
             session.commit()
@@ -252,6 +253,7 @@ class Conexion:
         _table = self._get_table(table)
 
         statement = db_delete(_table)
+        self._require_filterby(filterby)
         if self._lower_cols:
             filterby = self._to_lower_cols(filterby)
         cols_statement = self._cols_in_filter(filterby)
@@ -261,8 +263,9 @@ class Conexion:
             cols_error = list(filter(lambda x: x not in columns, cols_statement))
             if any(cols_error): raise DbExecption(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
         statement = self._filterby(_table, statement, columns, filterby)
+        self._require_where(statement)
 
-        with self.__Session() as session:
+        with self._session() as session:
             self._show_query(statement)
             result = session.execute(statement)
             session.commit()
@@ -273,6 +276,7 @@ class Conexion:
         _table = self._get_table(table)
 
         statement = db_update(_table)
+        self._require_filterby(filterby)
         if self._lower_cols:
             filterby = self._to_lower_cols(filterby)
             data = self._to_lower_cols(data)
@@ -280,16 +284,17 @@ class Conexion:
         columns = self._get_columns(statement, cols_statement)
 
         if self._raise:
-            cols_error = filter(lambda x: x not in columns, cols_statement)
+            cols_error = list(filter(lambda x: x not in columns, cols_statement))
             if any(cols_error): raise DbExecption(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
 
         statement = self._filterby(_table, statement, columns, filterby)
+        self._require_where(statement)
         for col_k, col_v in data.items():
             if isinstance(col_v, dict) and "dt_format" in col_v:
                 data[col_k] = self._to_datetime(col_v)
         
         statement = statement.values(data)
-        with self.__Session() as session:
+        with self._session() as session:
             self._show_query(statement)
             result = session.execute(statement)
             session.commit()
@@ -309,10 +314,11 @@ class Conexion:
         # schema_["foreign_key_constraints"] = repr(table_.foreign_key_constraints)
         return schema_
 
-    def exec_sql(self, statement, *, ret:bool=False, bind:dict={}):
+    def exec_sql(self, statement, *, ret:bool=False, bind:dict=None):
+        bind = bind or {}
         if isinstance(statement, str):
             statement = TextClause(statement)
-        with self.__Session() as session:
+        with self._session() as session:
             ## TODO
             self._show_query(statement, bindparams=bind)
             ## TODO
@@ -352,16 +358,21 @@ class Conexion:
         
         return cols
     
+    def _require_filterby(self, filterby):
+        if not filterby:
+            raise DbExecption(error("filterby is required", 400)) from None
+
+    def _require_where(self, statement):
+        # Avoid DELETE/UPDATE over the whole table when every filter column was discarded
+        if statement.whereclause is None:
+            raise DbExecption(error("filterby: no valid conditions, refusing to affect the whole table", 400)) from None
+
     def _orderby(self, statement, _table, orderby):
         valid_columns = self._valid_columns(_table, orderby.keys())
         if valid_columns:
-            for column in valid_columns:
-                order_column = orderby.get(column.name, False)
-                if order_column:
-                    return statement.order_by(desc(column))
-                else:
-                    return statement.order_by(column)
-        
+            statement = statement.order_by(
+                *[desc(column) if orderby.get(column.name, False) else column for column in valid_columns]
+            )
         return statement
 
     def _colset(self, _table, colset):
@@ -398,10 +409,10 @@ class Conexion:
         cond = db_and if cond_and else db_or
         for column, value in dict(filter(lambda x: x[0] in columns, filterby.items())).items():
             col = table.c.get(column)
-            if isinstance(value, list):
-                statement = statement.where(cond(*[self._filter_conditions(col, condition) for condition in value]))
-            else:
-                statement = statement.where(cond(self._filter_conditions(col, value)))
+            values = value if isinstance(value, list) else [value]
+            conditions = [c for c in (self._filter_conditions(col, v) for v in values) if c is not None]
+            if conditions:
+                statement = statement.where(cond(*conditions))
         
         return statement
 
@@ -443,7 +454,7 @@ class Conexion:
             elif type_ == "startswith":
                 condition = col.startswith(value.get("value"))
             elif type_ == "endswith":
-                 condition = col.startswith(value.get("value"))
+                condition = col.endswith(value.get("value"))
             elif type_ == "match":
                 condition = col.match(value.get("value"))
             elif type_ == "regexp_match":
@@ -452,6 +463,8 @@ class Conexion:
                 condition = col.between(value.get("value1"), value.get("value2"))
             elif self._raise:
                 raise DbExecption(error(f"none of the type are valid, col: {col}, value: {type_}", 400)) from None
+            else:
+                condition = None
         else:
             condition = col==value
             
@@ -464,8 +477,10 @@ class Conexion:
         return statement.offset(offset)
     
     def _limit(self, statement, limit):
-        percent = False if limit >= 1 else True
-        return statement.fetch(limit, percent=percent)
+        # limit < 1 is a percentage, only for dialects with FETCH ... PERCENT (Oracle)
+        if limit < 1:
+            return statement.fetch(limit, percent=True)
+        return statement.limit(int(limit))
     
     def _compile(self, statement, bindparams:dict=None):
         if bindparams:
@@ -473,30 +488,30 @@ class Conexion:
                 statement = TextClause(str(statement))
             query = statement.bindparams(**bindparams).compile(compile_kwargs={"literal_binds": True})
         else:
-            query = statement.compile(bind=self.__engine, compile_kwargs={"literal_binds": True})
+            query = statement.compile(bind=self._engine, compile_kwargs={"literal_binds": True})
         return query
     
     def _show_query(self, statement, bindparams:dict=None):
-        if self.show_query or self.__logger.isEnabledFor(logging.DEBUG):
+        if self.show_query or self._logger.isEnabledFor(logging.DEBUG):
             try:
                 query = self._compile(statement, bindparams=bindparams)
             except Exception as e:
                 query = f"Error compiling query: {str(e)}"
             log_query = str(query).replace("\n", "\\n")
             if self.show_query:
-                self.__logger.info(log_query)
+                self._logger.info(log_query)
             else:
-                self.__logger.debug(log_query)
+                self._logger.debug(log_query)
     
     def _to_datetime(self, col_v):
         return datetime.strptime(col_v["value"], col_v["dt_format"])
     
     def list_logs(self):
-        if not self.__log_path:
+        if not self._log_path:
             raise DbExecption(error("log not instanciated", 404, False)) from None
         dates = set()
-        prefix = f"{self.__log_path.name}."
-        for log_file in self.__log_path.parent.iterdir():
+        prefix = f"{self._log_path.name}."
+        for log_file in self._log_path.parent.iterdir():
             if (
                 not log_file.is_file()
                 or not log_file.name.startswith(prefix)
@@ -512,12 +527,12 @@ class Conexion:
                     dates.add(log_date)
             except ValueError:
                 continue
-        if self.__log_path.is_file():
+        if self._log_path.is_file():
             dates.add(date_cls.today().isoformat())
         return sorted(dates)
 
     def _date_log_path(self, log_date:str):
-        if not self.__log_path:
+        if not self._log_path:
             raise DbExecption(error("log not instanciated", 404, False)) from None
         try:
             if date_cls.fromisoformat(log_date).isoformat() != log_date:
@@ -525,10 +540,10 @@ class Conexion:
         except ValueError:
             return None
 
-        if log_date == date_cls.today().isoformat() and self.__log_path.is_file():
-            return self.__log_path
-        rotated_log = self.__log_path.with_name(
-            f"{self.__log_path.name}.{log_date}.log"
+        if log_date == date_cls.today().isoformat() and self._log_path.is_file():
+            return self._log_path
+        rotated_log = self._log_path.with_name(
+            f"{self._log_path.name}.{log_date}.log"
         )
         return rotated_log if rotated_log.is_file() else None
 
@@ -546,7 +561,7 @@ class Conexion:
         raise DbExecption(error("date not find", 404, False)) from None
 
     def delete_date_logs(self, date:str):
-        if not self.__log_path:
+        if not self._log_path:
             raise DbExecption(error("log not instanciated", 404, False)) from None
         if date == date_cls.today().isoformat():
             raise DbExecption(error("log with date is using now", 400, False)) from None
