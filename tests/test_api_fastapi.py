@@ -19,33 +19,22 @@ def make_app(cnx=None, lifespan=None):
     return app
 
 
-@pytest.fixture
-def app(cnx):
-    return make_app(cnx)
+@pytest.fixture(params=["sync", "async"])
+def any_client(request, db_url, async_db_url):
+    if request.param == "sync":
+        app = make_app(Conexion(db_url))
+    else:
+        @asynccontextmanager
+        async def lifespan(app):
+            # Created inside the app event loop so async connections stay valid
+            app.state.cnx = await AsyncConexion.create(async_db_url)
+            yield
+            await app.state.cnx._engine.dispose()
 
+        app = make_app(lifespan=lifespan)
 
-@pytest.fixture
-def client(app):
     with TestClient(app) as client:
         yield client
-
-
-@pytest.fixture
-def async_client(db_path):
-    @asynccontextmanager
-    async def lifespan(app):
-        # Created inside the app event loop so aiosqlite connections stay valid
-        app.state.cnx = await AsyncConexion.create(f"sqlite+aiosqlite:///{db_path}")
-        yield
-        await app.state.cnx._engine.dispose()
-
-    with TestClient(make_app(lifespan=lifespan)) as client:
-        yield client
-
-
-@pytest.fixture(params=["sync", "async"])
-def any_client(request):
-    return request.getfixturevalue("client" if request.param == "sync" else "async_client")
 
 
 def test_select(any_client):
@@ -116,8 +105,8 @@ def test_cnx_not_configured():
     assert rsp.status_code == 500
 
 
-def test_logs(db_path, tmp_path):
-    cnx = Conexion(f"sqlite:///{db_path}", config_log={"log_path": tmp_path / "logs" / "log", "level_log": "DEBUG"})
+def test_logs(db_url, tmp_path):
+    cnx = Conexion(db_url, config_log={"log_path": tmp_path / "logs" / "log", "level_log": "DEBUG"})
     with TestClient(make_app(cnx)) as client:
         client.post("/db/select", json={"table": "users"})
         dates = client.get("/log").json()

@@ -1,18 +1,16 @@
-import importlib.util
-import sys
+import json
+import os
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, create_engine, insert
 
-# The package folder is "alchemy-api" (not importable), load it as "alchemy_api"
-PKG_DIR = Path(__file__).resolve().parent.parent / "alchemy-api"
-_spec = importlib.util.spec_from_file_location(
-    "alchemy_api", PKG_DIR / "__init__.py", submodule_search_locations=[str(PKG_DIR)]
-)
-alchemy_api = importlib.util.module_from_spec(_spec)
-sys.modules["alchemy_api"] = alchemy_api
-_spec.loader.exec_module(alchemy_api)
+ROOT = Path(__file__).resolve().parent.parent
+
+# Oracle tests run only when this env var points to a settings file, e.g.
+#   TEST_ORACLE_CONFIG=settings/config_docker_oracle.json uv run pytest
+ORACLE_CONFIG = os.getenv("TEST_ORACLE_CONFIG")
+BACKENDS = ["sqlite", "oracle"] if ORACLE_CONFIG else ["sqlite"]
 
 ROWS = [
     {"id": 1, "name": "ana", "age": 30},
@@ -22,26 +20,56 @@ ROWS = [
 ]
 
 
+def _users_table(metadata):
+    return Table(
+        "users", metadata,
+        Column("id", Integer, primary_key=True, autoincrement=False),
+        Column("name", String(50)),
+        Column("age", Integer),
+        Column("created", DateTime),
+    )
+
+
+def _oracle_url():
+    from alchemy_api.utils import read_cnx_data
+    with open(ROOT / ORACLE_CONFIG) as f:
+        cfg = json.load(f)["database"]
+    return read_cnx_data(cfg)[0]
+
+
+@pytest.fixture(params=BACKENDS)
+def backend(request):
+    return request.param
+
+
 @pytest.fixture
-def db_path(tmp_path):
-    path = tmp_path / "test.db"
-    engine = create_engine(f"sqlite:///{path}")
+def db_url(backend, tmp_path):
+    url = _oracle_url() if backend == "oracle" else f"sqlite:///{tmp_path / 'test.db'}"
+    engine = create_engine(url)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.drop_all(engine)
+    metadata.create_all(engine)
     with engine.begin() as conn:
-        conn.execute(text(
-            "CREATE TABLE users (id INTEGER PRIMARY KEY, name VARCHAR(50), age INTEGER, created DATETIME)"
-        ))
-        conn.execute(text("INSERT INTO users (id, name, age) VALUES (:id, :name, :age)"), ROWS)
+        conn.execute(insert(users), ROWS)
+    yield url
+    metadata.drop_all(engine)
     engine.dispose()
-    return path
 
 
 @pytest.fixture
-def cnx(db_path):
-    from alchemy_api import Conexion
-    return Conexion(f"sqlite:///{db_path}")
+def async_db_url(db_url, backend):
+    # oracle+oracledb works with create_async_engine (async driver mode)
+    return db_url.replace("sqlite://", "sqlite+aiosqlite://", 1) if backend == "sqlite" else db_url
 
 
 @pytest.fixture
-def cnx_no_raise(db_path):
+def cnx(db_url):
     from alchemy_api import Conexion
-    return Conexion(f"sqlite:///{db_path}", _raise=False)
+    return Conexion(db_url)
+
+
+@pytest.fixture
+def cnx_no_raise(db_url):
+    from alchemy_api import Conexion
+    return Conexion(db_url, _raise=False)

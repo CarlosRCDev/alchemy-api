@@ -141,16 +141,16 @@ def test_exec_sql_error_is_dbexception(cnx):
         cnx.exec_sql("SELECT * FROM missing_table", ret=True)
 
 
-def test_lower_cols_modifier(db_path):
+def test_lower_cols_modifier(db_url):
     from alchemy_api import Conexion
-    cnx = Conexion(f"sqlite:///{db_path}", modifiers={"lower_table": True, "lower_cols": True, "ret_upper_cols": True})
+    cnx = Conexion(db_url, modifiers={"lower_table": True, "lower_cols": True, "ret_upper_cols": True})
     rows = cnx.select("USERS", colset=["NAME"], filterby={"ID": 1})
     assert rows == [{"NAME": "ana"}]
 
 
-def test_show_query_does_not_break(db_path, caplog):
+def test_show_query_does_not_break(db_url, caplog):
     from alchemy_api import Conexion
-    cnx = Conexion(f"sqlite:///{db_path}", show_query=True)
+    cnx = Conexion(db_url, show_query=True)
     with caplog.at_level("INFO"):
         cnx.select("users", filterby={"id": 1})
         cnx.insert("users", {"id": 20, "name": "x", "age": 1})
