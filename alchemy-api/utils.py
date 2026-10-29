@@ -1,7 +1,11 @@
 from collections import namedtuple
+import logging
 from os import getenv
 from sqlalchemy.engine.row import Row
 from sqlalchemy.engine.cursor import CursorResult
+
+_logger = logging.getLogger(__name__)
+
 
 class DbExecption(Exception):
     def __init__(self, rsp):
@@ -41,7 +45,7 @@ def read_cnx_data(cfg_data):
             if thick_mode:
                 from oracledb import init_oracle_client
                 init_oracle_client()
-            print(f"Thick mode: {not is_thin_mode()}")
+            _logger.info("Oracle thick mode: %s", not is_thin_mode())
         cnx_data = f"oracle+oracledb://{user}:{password}@{dsn}"
     elif type_ == "mariadb":
         server = cfg_data.get("server", getenv("DB_SERVER"))
@@ -76,8 +80,12 @@ def read_cnx_data(cfg_data):
         config_log.setdefault("log_path", _config_log.get("path", None))
         try:
             backup_count = int(_config_log.get("backup_count", 10))
-        except Exception as e:
-            print(repr(Warning(f"backup_count, fails not integer, value: {_config_log.get('backup_count')}, set default value = 10", str(e))))
+        except (TypeError, ValueError):
+            _logger.warning(
+                "Invalid backup_count %r; using default value 10",
+                _config_log.get("backup_count"),
+                exc_info=True,
+            )
             backup_count = 10
         config_log.setdefault("backup_count", backup_count)
     

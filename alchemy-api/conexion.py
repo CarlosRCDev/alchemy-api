@@ -1,7 +1,11 @@
 
 from re import sub as re_sub
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date as date_cls, datetime
+import logging
+import logging.handlers
+from pathlib import Path
+import re
 
 from sqlalchemy import create_engine, MetaData, Table, Column, desc, func
 from sqlalchemy import inspect as db_inspect
@@ -14,7 +18,50 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.elements import TextClause
 
 from .utils import DbExecption, error, to_dict, read_file_reverse
-from .logger_main import Logger as Log, DummyLogger
+
+
+def _configure_logger(config_log):
+    log_path = Path(config_log["log_path"]).expanduser()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logger = logging.getLogger(f"{__name__}.{log_path.resolve()}")
+    logger.setLevel(config_log.get("level_log", "INFO"))
+    logger.propagate = False
+
+    handler = next(
+        (
+            handler
+            for handler in logger.handlers
+            if isinstance(handler, logging.handlers.TimedRotatingFileHandler)
+            and Path(handler.baseFilename) == log_path.resolve()
+        ),
+        None,
+    )
+    if handler is None:
+        handler = logging.handlers.TimedRotatingFileHandler(
+            filename=log_path,
+            when="midnight",
+            backupCount=int(config_log.get("backup_count", 10)),
+            encoding="utf-8",
+        )
+        handler.suffix = "%Y-%m-%d.log"
+        handler.extMatch = re.compile(r"^\d{4}-\d{2}-\d{2}\.log$")
+        handler.setFormatter(
+            logging.Formatter(
+                fmt="%(asctime)s %(levelname)-8s %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logger.addHandler(handler)
+    else:
+        handler.backupCount = int(config_log.get("backup_count", 10))
+
+    logger.info(
+        "-----Start Application: LEVEL:%s-----",
+        config_log.get("level_log", "INFO"),
+    )
+    return logger, log_path
+
 
 class Conexion:
     def __init__(self, cnx_data, *, cnx_data_extra:dict={}, show_query:bool=False, modifiers:dict={}, config_log:dict={}, _raise:bool=True, engine=None, sess_maker=None) -> None:
@@ -30,12 +77,10 @@ class Conexion:
         else:    
             self.__sessionmaker = sessionmaker(self.__engine)
         
+        self.__log_path = None
+        self.__logger = logging.getLogger(__name__)
         if config_log:
-            self.__log = Log(config_log)
-            self.__logger = self.__log.ret_logger()
-        else:
-            self.__log = None
-            self.__logger = DummyLogger().ret_logger()
+            self.__logger, self.__log_path = _configure_logger(config_log)
 
         self._lower_table = modifiers.get("lower_table", False) # Transform table input to lowercase, oracle default
         self._lower_cols = modifiers.get("lower_cols", False) # Transform columns input to lowercase, oracle default 
@@ -432,54 +477,81 @@ class Conexion:
         return query
     
     def _show_query(self, statement, bindparams:dict=None):
-        if self.show_query or self.__logger.isEnabledFor(10): # 10 is DEBUG
+        if self.show_query or self.__logger.isEnabledFor(logging.DEBUG):
             try:
                 query = self._compile(statement, bindparams=bindparams)
             except Exception as e:
                 query = f"Error compiling query: {str(e)}"
+            log_query = str(query).replace("\n", "\\n")
             if self.show_query:
-                print(query, "\n")
-            self.__logger.debug((str(query).replace("\n", "\\n"),))
+                self.__logger.info(log_query)
+            else:
+                self.__logger.debug(log_query)
     
     def _to_datetime(self, col_v):
         return datetime.strptime(col_v["value"], col_v["dt_format"])
     
     def list_logs(self):
-        if self.__log:
-            return self.__log.list_logs()
-        else:
+        if not self.__log_path:
             raise DbExecption(error("log not instanciated", 404, False)) from None
-    
+        dates = set()
+        prefix = f"{self.__log_path.name}."
+        for log_file in self.__log_path.parent.iterdir():
+            if (
+                not log_file.is_file()
+                or not log_file.name.startswith(prefix)
+                or not log_file.name.endswith(".log")
+            ):
+                continue
+            log_date = log_file.name[len(prefix):-4]
+            try:
+                if (
+                    date_cls.fromisoformat(log_date).isoformat()
+                    == log_date
+                ):
+                    dates.add(log_date)
+            except ValueError:
+                continue
+        if self.__log_path.is_file():
+            dates.add(date_cls.today().isoformat())
+        return sorted(dates)
+
+    def _date_log_path(self, log_date:str):
+        if not self.__log_path:
+            raise DbExecption(error("log not instanciated", 404, False)) from None
+        try:
+            if date_cls.fromisoformat(log_date).isoformat() != log_date:
+                return None
+        except ValueError:
+            return None
+
+        if log_date == date_cls.today().isoformat() and self.__log_path.is_file():
+            return self.__log_path
+        rotated_log = self.__log_path.with_name(
+            f"{self.__log_path.name}.{log_date}.log"
+        )
+        return rotated_log if rotated_log.is_file() else None
+
     def date_logs_order(self, date:str):
-        if self.__log:
-            ret = self.__log.date_logs(date)
-            if ret:
-                with open(ret, "r") as f_p:
-                    file_path = f_p.readlines()
-                return file_path
-            else:
-                raise DbExecption(error("date not find", 404, False)) from None
-        else:
-            raise DbExecption(error("log not instanciated", 404, False)) from None
+        log_path = self._date_log_path(date)
+        if log_path:
+            with log_path.open("r", encoding="utf-8") as file:
+                return file.readlines()
+        raise DbExecption(error("date not find", 404, False)) from None
 
     def date_logs_reverse(self, date:str, n_line:int=None):
-        if self.__log:
-            ret = self.__log.date_logs(date)
-            if ret:
-                return read_file_reverse(ret, n_line)
-            else:
-                raise DbExecption(error("date not find", 404, False)) from None
-        else:
-            raise DbExecption(error("log not instanciated", 404, False)) from None
+        log_path = self._date_log_path(date)
+        if log_path:
+            return read_file_reverse(log_path, n_line)
+        raise DbExecption(error("date not find", 404, False)) from None
 
     def delete_date_logs(self, date:str):
-        if self.__log:
-            ret = self.__log.delete_date_logs(date)
-            if ret:
-                return ret
-            elif ret is None:
-                raise DbExecption(error("date not find", 404, False)) from None
-            else:
-                raise DbExecption(error("log with date is using now", 400, False)) from None
-        else:
+        if not self.__log_path:
             raise DbExecption(error("log not instanciated", 404, False)) from None
+        if date == date_cls.today().isoformat():
+            raise DbExecption(error("log with date is using now", 400, False)) from None
+        log_path = self._date_log_path(date)
+        if log_path:
+            log_path.unlink()
+            return True
+        raise DbExecption(error("date not find", 404, False)) from None
