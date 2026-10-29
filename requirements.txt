@@ -1,0 +1,5 @@
+SQLAlchemy==2.0.31
+# mariadb==1.1.10 # export CFLAGS="-v -E"
+# pymysql==1.1.1 # for mariadb in sqlalchemy
+# oracledb==2.2.1 # for oracle in sqlalchemy
+# psycopg==3.2.12

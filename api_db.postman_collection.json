@@ -1,0 +1,298 @@
+{
+	"info": {
+		"_postman_id": "7f3bc393-72e5-4581-add3-491adefc2732",
+		"name": "api_db",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "4948540"
+	},
+	"item": [
+		{
+			"name": "db/insert",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"USER\",\r\n    \"data\": [\r\n        {\r\n            \"U_EMAIL\": \"test@test.com\",\r\n            \"U_NOMBRE\": \"test\",\r\n            \"U_APELLIDOS\": \"supertest\",\r\n            \"U_PASSWORD\": \"pass\"\r\n        }\r\n    ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/insert",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"insert"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/update",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"USER\",\r\n    \"data\": {\r\n        \"U_NOMBRE\": \"testa\"\r\n    },\r\n    \"filterby\": {\r\n        \"U_EMAIL\": \"test@test.com\"\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/update",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"update"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/delete",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"USER\",\r\n    \"filterby\": {\r\n        \"U_EMAIL\": \"test@test.com\"\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/delete",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"delete"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/deletebylist",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"USER\",\r\n    \"filterby\": [\r\n        {\r\n            \"key\": \"U_EMAIL\",\r\n            \"conditions\": [\r\n                {\r\n                    \"value\": \"test@test.com\"\r\n                }\r\n            ]\r\n        }\r\n    ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/delete",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"delete"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/select",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"USER\",\r\n    \"filterby\": {\r\n        \"U_NOMBRE\": {\r\n            \"type\": \"in\",\r\n            \"value\": [\r\n                \"test\",\r\n                \"testa\"\r\n            ]\r\n        },\r\n        \"U_PASSWORD\": \"pass\"\r\n    },\r\n    \"colset\": [\r\n        \"U_ID\",\r\n        \"U_PASSWORD\"\r\n    ],\r\n    \"send_colnames\": true,\r\n    \"count\": false\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/select",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"select"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/selectbykeylist",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"USER\",\r\n    \"filterby\": {\r\n        \"U_NOMBRE\": [\r\n            {\r\n                \"type\": \"=\",\r\n                \"value\": \"test\"\r\n            },\r\n            {\r\n                \"type\": \"=\",\r\n                \"value\": \"testa\"\r\n            }\r\n        ],\r\n        \"U_PASSWORD\": \"pass\"\r\n    },\r\n    \"colset\": [\r\n        \"U_ID\",\r\n        \"U_PASSWORD\"\r\n    ],\r\n    \"send_colnames\": true,\r\n    \"count\": false\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/select",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"select"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/selectbylist2",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"USER\",\r\n    \"filterby\": [\r\n        {\r\n            \"key\": \"U_NOMBRE\",\r\n            \"and\": false,\r\n            \"conditions\": [\r\n                {\r\n                    \"type\": \"=\",\r\n                    \"value\": \"test\"\r\n                },\r\n                {\r\n                    \"type\": \"=\",\r\n                    \"value\": \"testa\"\r\n                }\r\n            ]\r\n        },\r\n        {\r\n            \"U_PASSWORD\": \"pass\"\r\n        }\r\n    ],\r\n    \"colset\": [\r\n        \"U_ID\",\r\n        \"U_PASSWORD\"\r\n    ],\r\n    \"send_colnames\": true,\r\n    \"count\": false\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/select",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"select"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/selectbylist3",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"USER\",\r\n    \"filterby\": [\r\n        {\r\n            \"key\": \"U_NOMBRE\",\r\n            \"and\": false,\r\n            \"conditions\": [\r\n                {\r\n                    \"type\": \"in\",\r\n                    \"value\": [\r\n                        \"test\",\r\n                        \"testa\"\r\n                    ]\r\n                },\r\n                {\r\n                    \"type\": \"=\",\r\n                    \"value\": \"testa\"\r\n                }\r\n            ]\r\n        },\r\n        {\r\n            \"U_PASSWORD\": \"pass\"\r\n        },\r\n        {\r\n            \"U_NOMBRE\": {\r\n                \"type\": \"in\",\r\n                \"value\": [\r\n                    \"test\",\r\n                    \"testa\"\r\n                ]\r\n            }\r\n        }\r\n    ],\r\n    \"colset\": [\r\n        \"U_ID\",\r\n        \"U_PASSWORD\"\r\n    ],\r\n    \"send_colnames\": true,\r\n    \"count\": false\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/select",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"select"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/select/v_data",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"V_DATA_DATALIST_DRETRIEVED\",\r\n    \"filterby\": [\r\n        {\r\n            \"key\": \"seqnum\",\r\n            \"and\": false,\r\n            \"conditions\": [\r\n                {\r\n                    \"value\": 1\r\n                },\r\n                {\r\n                    \"type\": \"is\",\r\n                    \"value\": null\r\n                }\r\n            ]\r\n        },\r\n        {\r\n            \"DT_DS_ID\": 1\r\n        }\r\n    ],\r\n    \"send_colnames\": true\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/select",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"select"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/schema",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table\": \"DATA\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{API_DB}}/db/schema",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"schema"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "db/tables",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{API_DB}}/db/tables",
+					"host": [
+						"{{API_DB}}"
+					],
+					"path": [
+						"db",
+						"tables"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

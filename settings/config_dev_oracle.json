@@ -1,0 +1,22 @@
+{
+    "database": {
+        "type": "oracle",
+        "user": "***",
+        "password": "***",
+        "server": "edoc01pre-scan.mju.es",
+        "port": 1771,
+        "sid": "preama041",
+        "show_query": true,
+        "modifiers": {
+            "lower_table": true,
+            "lower_cols": true,
+            "ret_upper_table": true,
+            "ret_upper_cols": true
+        },
+        "log": {
+            "path": "../logdb/log",
+            "level_log": "DEBUG",
+            "backup_count": 10
+        }
+    }
+}

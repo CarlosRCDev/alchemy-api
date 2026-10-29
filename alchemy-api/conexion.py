@@ -1,0 +1,485 @@
+
+from re import sub as re_sub
+from contextlib import contextmanager
+from datetime import datetime
+
+from sqlalchemy import create_engine, MetaData, Table, Column, desc, func
+from sqlalchemy import inspect as db_inspect
+from sqlalchemy import select as db_select
+from sqlalchemy import insert as db_insert
+from sqlalchemy import delete as db_delete
+from sqlalchemy import update as db_update
+from sqlalchemy import or_ as db_or, and_ as db_and
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql.elements import TextClause
+
+from .utils import DbExecption, error, to_dict, read_file_reverse
+from .logger_main import Logger as Log, DummyLogger
+
+class Conexion:
+    def __init__(self, cnx_data, *, cnx_data_extra:dict={}, show_query:bool=False, modifiers:dict={}, config_log:dict={}, _raise:bool=True, engine=None, sess_maker=None) -> None:
+        self.show_query = show_query
+        self._raise = _raise
+        if engine:
+            self.__engine = engine
+        else:
+            self.__engine = create_engine(cnx_data, **cnx_data_extra)
+
+        if sess_maker:
+            self.__sessionmaker = sess_maker
+        else:    
+            self.__sessionmaker = sessionmaker(self.__engine)
+        
+        if config_log:
+            self.__log = Log(config_log)
+            self.__logger = self.__log.ret_logger()
+        else:
+            self.__log = None
+            self.__logger = DummyLogger().ret_logger()
+
+        self._lower_table = modifiers.get("lower_table", False) # Transform table input to lowercase, oracle default
+        self._lower_cols = modifiers.get("lower_cols", False) # Transform columns input to lowercase, oracle default 
+        self._ret_upper_table = modifiers.get("ret_upper_table", False) # Transform return table in capital case
+        self._ret_upper_cols = modifiers.get("ret_upper_cols", False) # Transform return columns in capital case
+        
+        if isinstance(self.__sessionmaker, sessionmaker):
+            self.post_conexion()
+        
+    def post_conexion(self):
+        self._metadata = MetaData()
+        self._views = db_inspect(self.__engine).get_view_names()
+        self._metadata.reflect(self.__engine, views=True)
+    
+    @property
+    def metadata(self):
+        return self._metadata
+
+    # @property
+    # def engine(self):
+    #     return self.__engine
+
+    @property
+    def logger(self):
+        return self.__logger
+    
+    @contextmanager
+    def __Session(self):
+        with self.__sessionmaker() as session:
+            try:
+                yield session
+            except Exception as e:
+                str_error = str(e)
+                self.__logger.error(str_error.replace("\n", "\\n"))
+                raise DbExecption(error(str_error, 400)) from None
+            finally:
+                session.close()
+
+    @classmethod
+    def _to_lower_cols(cls, cols):
+        if isinstance(cols, dict):
+            return {k.lower(): v for k,v in cols.items()}
+        elif isinstance(cols, list):
+            return [cls._to_lower_cols(col) for col in cols]
+        elif isinstance(cols, str):
+            return cols.lower()
+        else:
+            return cols
+
+    @classmethod
+    def _to_upper_cols(cls, cols):
+        if isinstance(cols, dict):
+            return {k.upper(): v for k,v in cols.items()}
+        elif isinstance(cols, list):
+            return [cls._to_upper_cols(col) for col in cols]
+        elif isinstance(cols, str):
+            return cols.upper()
+        else:
+            return cols
+
+    def _valid_columns(self, _table, columns):
+        __table = []
+        for column in columns:
+            _column = _table.c.get(column, None)
+            if isinstance(_column, Column):
+                __table.append(_column)
+            elif self._raise:
+                raise DbExecption(error(f"column: {column}, not find in table", 400)) from None
+        if __table:
+            return __table
+        else:
+            return None
+    
+    def _populate(self, tables_):
+        """
+        Populate by list of names
+        """
+        with self.__Session():
+            for table in tables_:
+                Table(table, self._metadata, autoload_with=self.__engine)
+    
+    def select(self, table:str, *, colset:list=None, filterby:dict=None, orderby:dict=None, offset:int=None,limit:float=None, count:bool=False, send_colnames:bool=True, dt_format:str=None, **kwargs):
+        _table = self._get_table(table)
+        if count:
+            statement = db_select(func.count('*')).select_from(_table)
+        elif colset:
+            if self._lower_cols:
+                colset = self._to_lower_cols(colset)
+            statement = db_select(*self._colset(_table, colset))
+        else:
+            statement = db_select(_table)
+
+        columns_table = self._get_columns(_table)
+
+        if self._lower_cols and colset:
+            colset = self._to_lower_cols(colset)
+
+        if self._raise and colset:
+            cols_error = list(filter(lambda x: x not in columns_table, colset))
+            if any(cols_error): raise DbExecption(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
+
+        if filterby:
+            if self._lower_cols:
+                filterby = self._to_lower_cols(filterby)
+            if self._raise:
+                if isinstance(filterby, list):
+                    cols = [item for sublist in [[x.get("key")] if x.get("key") else list(x.keys()) for x in filterby] for item in sublist]
+                    cols_error = list(filter(lambda x: x not in columns_table, cols))
+                else:
+                    cols_error = list(filter(lambda x: x not in columns_table, filterby.keys()))
+                if any(cols_error): raise DbExecption(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
+                
+            statement = self._filterby(_table, statement, columns_table, filterby)
+        
+        if orderby and not count:
+            if self._lower_cols:
+                orderby = self._to_lower_cols(orderby)
+            statement = self._orderby(statement, _table, orderby)
+        
+        if offset and not count:
+            statement = self._offset(statement, offset)
+        
+        if limit and not count:
+            statement = self._limit(statement, limit)
+
+        with self.__Session() as session:
+            self._show_query(statement)
+            result = session.execute(statement).all()
+        if dt_format:
+            result = [[col.strftime(dt_format) if isinstance(col, datetime) else col for col in row] for row in result]
+        
+        if send_colnames:
+            columns_colset = self._get_columns(statement)
+            if self._ret_upper_cols:
+                columns_colset = self._to_upper_cols(columns_colset)
+            result = self._colnames(columns_colset, result)
+            return result[0] if count else result
+        else:
+            result = list(map(list,result))
+            return result[0] if count else result
+
+    def insert(self, table:str, data:list, **kwargs):
+        if isinstance(data, dict):
+            data = [data]
+        _table = self._get_table(table)
+
+        statement = db_insert(_table)
+
+        if self._lower_cols:
+            data = self._to_lower_cols(data)
+        
+        result = []
+        with self.__Session() as session:
+            for row in data:
+                for col_k, col_v in row.items():
+                    if isinstance(col_v, dict) and "dt_format" in col_v:
+                        row[col_k] = self._to_datetime(col_v)
+                _statement = statement.values(row)
+                self._show_query(statement, bindparams=row)
+                row_result = session.execute(_statement)
+                result.append(row_result)
+            session.commit()
+
+        return result
+
+    def delete(self, table:str, filterby:dict, **kwargs):
+        ### TODO ###
+        # add lower case and upper case methods like others
+        _table = self._get_table(table)
+
+        statement = db_delete(_table)
+        if self._lower_cols:
+            filterby = self._to_lower_cols(filterby)
+        cols_statement = self._cols_in_filter(filterby)
+        columns = self._get_columns(statement, cols_statement)
+
+        if self._raise:
+            cols_error = list(filter(lambda x: x not in columns, cols_statement))
+            if any(cols_error): raise DbExecption(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
+        statement = self._filterby(_table, statement, columns, filterby)
+
+        with self.__Session() as session:
+            self._show_query(statement)
+            result = session.execute(statement)
+            session.commit()
+
+        return result
+    
+    def update(self, table:str, data:dict, *, filterby:dict=None, **kwargs):
+        _table = self._get_table(table)
+
+        statement = db_update(_table)
+        if self._lower_cols:
+            filterby = self._to_lower_cols(filterby)
+            data = self._to_lower_cols(data)
+        cols_statement = self._cols_in_filter(filterby)
+        columns = self._get_columns(statement, cols_statement)
+
+        if self._raise:
+            cols_error = filter(lambda x: x not in columns, cols_statement)
+            if any(cols_error): raise DbExecption(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
+
+        statement = self._filterby(_table, statement, columns, filterby)
+        for col_k, col_v in data.items():
+            if isinstance(col_v, dict) and "dt_format" in col_v:
+                data[col_k] = self._to_datetime(col_v)
+        
+        statement = statement.values(data)
+        with self.__Session() as session:
+            self._show_query(statement)
+            result = session.execute(statement)
+            session.commit()
+         
+        return result
+    
+    def tables(self):
+        ret_tables = list(set(self.metadata.tables.keys()) - set(self._views)), self._views
+        return [[t.upper() for t in t_v] for t_v in ret_tables] if self._ret_upper_table else ret_tables
+
+    def schema(self, table:str, **kwargs):
+        table_ = self._get_table(table)
+        schema_ = {}
+        schema_["columns"] = {tab.name: repr(tab) for tab in table_.columns}
+        schema_["indexes"] = repr(table_.indexes)
+        # schema_["foreign_keys"] = repr(table_.foreign_keys)
+        # schema_["foreign_key_constraints"] = repr(table_.foreign_key_constraints)
+        return schema_
+
+    def exec_sql(self, statement, *, ret:bool=False, bind:dict={}):
+        if isinstance(statement, str):
+            statement = TextClause(statement)
+        with self.__Session() as session:
+            ## TODO
+            self._show_query(statement, bindparams=bind)
+            ## TODO
+            if ret:
+                return to_dict(session.execute(statement, params=bind).all())
+            session.execute(statement, params=bind)
+            session.commit()
+
+    def _get_table(self, table):
+        if self._lower_table:
+            table = table.lower()
+        _table = self._metadata.tables.get(table, None)
+        
+        if not isinstance(_table, Table):
+            raise DbExecption(error(f"Not find table: {table} in db", 400)) from None
+        
+        return _table
+
+    def _get_columns(self, statement=None, cols=None):
+        # if self._lower_cols:
+        #     cols = [col.lower() for col in cols]
+        if isinstance(statement, Table): # En realidad es una tabla
+            return [x.key for x in statement.c]
+        
+        cols_statement = []
+        if hasattr(statement, "column_descriptions"):
+            cols_statement = [x.get("name") for x in statement.column_descriptions]
+        elif hasattr(statement, "table"):
+            cols_statement = [x for x in statement.table.columns.keys() if x in cols]
+        return cols_statement
+    
+    def _cols_in_filter(self, filterby):
+        if isinstance(filterby, list):
+            cols = [item for sublist in [[x.get("key")] if x.get("key") else list(x.keys()) for x in filterby] for item in sublist]
+        else:
+            cols = list(filterby.keys())
+        
+        return cols
+    
+    def _orderby(self, statement, _table, orderby):
+        valid_columns = self._valid_columns(_table, orderby.keys())
+        if valid_columns:
+            for column in valid_columns:
+                order_column = orderby.get(column.name, False)
+                if order_column:
+                    return statement.order_by(desc(column))
+                else:
+                    return statement.order_by(column)
+        
+        return statement
+
+    def _colset(self, _table, colset):
+        valid_columns = self._valid_columns(_table, colset)
+        
+        if valid_columns:
+            return valid_columns
+        else:
+            if self._raise:
+                raise DbExecption(error(f"none of the columns are valid, columns: {', '.join(colset)}", 400)) from None
+            return [_table]
+    
+    def _filterby(self, table, statement, columns, filterby):
+        if isinstance(filterby, list):
+            for filter_column in filterby:
+                if filter_column.get("key") and filter_column.get("conditions"):
+                    statement = self._filter_by_list(table, statement, columns, filter_column)
+                else:
+                    statement = self._filter_by_dict(table, statement, columns, filter_column)
+        else:
+            statement = self._filter_by_dict(table, statement, columns, filterby)
+        return statement
+    
+    def _filter_by_list(self, table, statement, columns, filterby):
+
+        column = filterby.get("key", None)
+        conditions = filterby.get("conditions")
+        cond_and = filterby.get("and", True)
+        statement = self._filter_by_dict(table, statement, columns, {column:conditions}, cond_and=cond_and)
+            
+        return statement
+    
+    def _filter_by_dict(self, table, statement, columns, filterby, cond_and=True):
+        cond = db_and if cond_and else db_or
+        for column, value in dict(filter(lambda x: x[0] in columns, filterby.items())).items():
+            col = table.c.get(column)
+            if isinstance(value, list):
+                statement = statement.where(cond(*[self._filter_conditions(col, condition) for condition in value]))
+            else:
+                statement = statement.where(cond(self._filter_conditions(col, value)))
+        
+        return statement
+
+    def _filter_conditions(self, col, value):
+        if isinstance(value, dict):
+            type_ = value.get("type", "==")
+            if type_ == "==" or type_ == "=":
+                condition = col == value.get("value")
+            elif type_ == "<=":
+                condition = col <= value.get("value")
+            elif type_ == "<":
+                condition = col < value.get("value")
+            elif type_ == ">":
+                condition = col > value.get("value")
+            elif type_ == ">=":
+                condition = col >= value.get("value")
+            elif type_ == "!=":
+                condition = col != value.get("value")
+            elif type_ == "in":
+                condition = col.in_(value.get("value"))
+            elif type_ == "not_in":
+                condition = col.not_in(value.get("value"))
+            elif type_ == "is":
+                condition = col.is_(value.get("value"))
+            elif type_ == "is_not":
+                condition = col.is_not(value.get("value"))
+            elif type_ == "like":
+                condition = col.like(value.get("value"))
+            elif type_ == "ilike":
+                condition = col.ilike(value.get("value"))
+            elif type_ == "not_like":
+                condition = col.not_like(value.get("value"))
+            elif type_ == "not_ilike":
+                condition = col.not_ilike(value.get("value"))
+            elif type_ == "contains":
+                condition = col.contains(value.get("value"))
+            elif type_ == "icontains":
+                condition = col.icontains(value.get("value"))
+            elif type_ == "startswith":
+                condition = col.startswith(value.get("value"))
+            elif type_ == "endswith":
+                 condition = col.startswith(value.get("value"))
+            elif type_ == "match":
+                condition = col.match(value.get("value"))
+            elif type_ == "regexp_match":
+                condition = col.regexp_match(value.get("value"))
+            elif type_ == "between":
+                condition = col.between(value.get("value1"), value.get("value2"))
+            elif self._raise:
+                raise DbExecption(error(f"none of the type are valid, col: {col}, value: {type_}", 400)) from None
+        else:
+            condition = col==value
+            
+        return condition
+
+    def _colnames(self, columns, result):
+        return [dict(zip(columns, row)) for row in result]
+    
+    def _offset(self, statement, offset):
+        return statement.offset(offset)
+    
+    def _limit(self, statement, limit):
+        percent = False if limit >= 1 else True
+        return statement.fetch(limit, percent=percent)
+    
+    def _compile(self, statement, bindparams:dict=None):
+        if bindparams:
+            if not isinstance(statement, TextClause):
+                statement = TextClause(str(statement))
+            query = statement.bindparams(**bindparams).compile(compile_kwargs={"literal_binds": True})
+        else:
+            query = statement.compile(bind=self.__engine, compile_kwargs={"literal_binds": True})
+        return query
+    
+    def _show_query(self, statement, bindparams:dict=None):
+        if self.show_query or self.__logger.isEnabledFor(10): # 10 is DEBUG
+            try:
+                query = self._compile(statement, bindparams=bindparams)
+            except Exception as e:
+                query = f"Error compiling query: {str(e)}"
+            if self.show_query:
+                print(query, "\n")
+            self.__logger.debug((str(query).replace("\n", "\\n"),))
+    
+    def _to_datetime(self, col_v):
+        return datetime.strptime(col_v["value"], col_v["dt_format"])
+    
+    def list_logs(self):
+        if self.__log:
+            return self.__log.list_logs()
+        else:
+            raise DbExecption(error("log not instanciated", 404, False)) from None
+    
+    def date_logs_order(self, date:str):
+        if self.__log:
+            ret = self.__log.date_logs(date)
+            if ret:
+                with open(ret, "r") as f_p:
+                    file_path = f_p.readlines()
+                return file_path
+            else:
+                raise DbExecption(error("date not find", 404, False)) from None
+        else:
+            raise DbExecption(error("log not instanciated", 404, False)) from None
+
+    def date_logs_reverse(self, date:str, n_line:int=None):
+        if self.__log:
+            ret = self.__log.date_logs(date)
+            if ret:
+                return read_file_reverse(ret, n_line)
+            else:
+                raise DbExecption(error("date not find", 404, False)) from None
+        else:
+            raise DbExecption(error("log not instanciated", 404, False)) from None
+
+    def delete_date_logs(self, date:str):
+        if self.__log:
+            ret = self.__log.delete_date_logs(date)
+            if ret:
+                return ret
+            elif ret is None:
+                raise DbExecption(error("date not find", 404, False)) from None
+            else:
+                raise DbExecption(error("log with date is using now", 400, False)) from None
+        else:
+            raise DbExecption(error("log not instanciated", 404, False)) from None

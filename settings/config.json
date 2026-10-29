@@ -1,0 +1,16 @@
+{
+    "database": {
+        "type": "mariadb",
+        "user": "easy_read",
+        "password": "easy_read",
+        "server": "lgdtbgdfo204.mju.es",
+        "port": 3306,
+        "db": "easy_read",
+        "show_query": false,
+        "log": {
+            "path": "../logdb/log",
+            "level_log": "DEBUG",
+            "backup_count": 10
+        }
+    }
+}
