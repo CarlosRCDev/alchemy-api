@@ -5,7 +5,6 @@ from datetime import date as date_cls, datetime
 import logging
 import logging.handlers
 from pathlib import Path
-import re
 
 from sqlalchemy import create_engine, MetaData, Table, Column, desc, func
 from sqlalchemy import inspect as db_inspect
@@ -18,6 +17,17 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.elements import TextClause
 
 from .utils import DbExecption, error, to_dict, read_file_reverse
+
+
+def _rotated_log_path(log_path:Path, log_date:str) -> Path:
+    """Rotated log keeps the extension of the current log: log.log -> log.<date>.log, log -> log.<date>.log"""
+    return log_path.with_name(f"{log_path.stem}.{log_date}{log_path.suffix or '.log'}")
+
+
+def _log_namer(default_name:str) -> str:
+    # default_name is "<log_path>.<date>", as built by TimedRotatingFileHandler
+    log_path, _, log_date = default_name.rpartition(".")
+    return str(_rotated_log_path(Path(log_path), log_date))
 
 
 def _configure_logger(config_log):
@@ -38,14 +48,15 @@ def _configure_logger(config_log):
         None,
     )
     if handler is None:
+        # Default suffix/extMatch for "midnight" are "%Y-%m-%d"; the namer also uses
+        # them to find old logs to remove with backupCount
         handler = logging.handlers.TimedRotatingFileHandler(
             filename=log_path,
             when="midnight",
             backupCount=int(config_log.get("backup_count", 10)),
             encoding="utf-8",
         )
-        handler.suffix = "%Y-%m-%d.log"
-        handler.extMatch = re.compile(r"^\d{4}-\d{2}-\d{2}\.log$")
+        handler.namer = _log_namer
         handler.setFormatter(
             logging.Formatter(
                 fmt="%(asctime)s %(levelname)-8s %(message)s",
@@ -510,20 +521,12 @@ class Conexion:
         if not self._log_path:
             raise DbExecption(error("log not instanciated", 404, False)) from None
         dates = set()
-        prefix = f"{self._log_path.name}."
         for log_file in self._log_path.parent.iterdir():
-            if (
-                not log_file.is_file()
-                or not log_file.name.startswith(prefix)
-                or not log_file.name.endswith(".log")
-            ):
+            if not log_file.is_file() or log_file.name == self._log_path.name:
                 continue
-            log_date = log_file.name[len(prefix):-4]
+            log_date = log_file.name[len(self._log_path.stem) + 1:][:10]
             try:
-                if (
-                    date_cls.fromisoformat(log_date).isoformat()
-                    == log_date
-                ):
+                if _rotated_log_path(self._log_path, date_cls.fromisoformat(log_date).isoformat()) == log_file:
                     dates.add(log_date)
             except ValueError:
                 continue
@@ -542,9 +545,7 @@ class Conexion:
 
         if log_date == date_cls.today().isoformat() and self._log_path.is_file():
             return self._log_path
-        rotated_log = self._log_path.with_name(
-            f"{self._log_path.name}.{log_date}.log"
-        )
+        rotated_log = _rotated_log_path(self._log_path, log_date)
         return rotated_log if rotated_log.is_file() else None
 
     def date_logs_order(self, date:str):

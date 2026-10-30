@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import date
 
 import pytest
 from fastapi import FastAPI
@@ -20,14 +21,14 @@ def make_app(cnx=None, lifespan=None):
 
 
 @pytest.fixture(params=["sync", "async"])
-def any_client(request, db_url, async_db_url):
+def any_client(request, cnx_cfg, async_db_cfg):
     if request.param == "sync":
-        app = make_app(Conexion(db_url))
+        app = make_app(Conexion(**cnx_cfg))
     else:
         @asynccontextmanager
         async def lifespan(app):
             # Created inside the app event loop so async connections stay valid
-            app.state.cnx = await AsyncConexion.create(async_db_url)
+            app.state.cnx = await AsyncConexion.create(**async_db_cfg)
             yield
             await app.state.cnx._engine.dispose()
 
@@ -105,16 +106,19 @@ def test_cnx_not_configured():
     assert rsp.status_code == 500
 
 
-def test_logs(db_url, tmp_path):
-    cnx = Conexion(db_url, config_log={"log_path": tmp_path / "logs" / "log", "level_log": "DEBUG"})
+def test_logs(cnx_cfg):
+    if not cnx_cfg["config_log"]:
+        pytest.skip("No log in the settings file")
+    cnx = Conexion(**cnx_cfg)
+    today = date.today().isoformat()
     with TestClient(make_app(cnx)) as client:
         client.post("/db/select", json={"table": "users"})
-        dates = client.get("/log").json()
-        assert len(dates) == 1
-        lines = client.get(f"/log/order/{dates[0]}").json()
+        # The log is kept between runs, so older (rotated) dates may also exist
+        assert today in client.get("/log").json()
+        lines = client.get(f"/log/order/{today}").json()
         assert "Start Application" in lines[0]
-        reverse = client.get(f"/log/reverse/{dates[0]}/1").json()
+        reverse = client.get(f"/log/reverse/{today}/1").json()
         assert len(reverse) == 1 and "SELECT" in reverse[0]
         assert client.get("/log/reverse/2000-01-01").status_code == 404
         # The current log can not be removed
-        assert client.delete(f"/delete_log/{dates[0]}").status_code == 400
+        assert client.delete(f"/delete_log/{today}").status_code == 400

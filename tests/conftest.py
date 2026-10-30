@@ -1,16 +1,14 @@
 import json
-import os
 from pathlib import Path
 
 import pytest
 from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, create_engine, insert
 
-ROOT = Path(__file__).resolve().parent.parent
+from alchemy_api.utils import read_cnx_data
 
-# Oracle tests run only when this env var points to a settings file, e.g.
-#   TEST_ORACLE_CONFIG=settings/config_docker_oracle.json uv run pytest
-ORACLE_CONFIG = os.getenv("TEST_ORACLE_CONFIG")
-BACKENDS = ["sqlite", "oracle"] if ORACLE_CONFIG else ["sqlite"]
+# Every settings file in tests/settings is a test run: all tests are executed once per file
+SETTINGS_DIR = Path(__file__).resolve().parent / "settings"
+SETTINGS_FILES = sorted(SETTINGS_DIR.glob("*.json"))
 
 ROWS = [
     {"id": 1, "name": "ana", "age": 30},
@@ -30,46 +28,63 @@ def _users_table(metadata):
     )
 
 
-def _oracle_url():
-    from alchemy_api.utils import read_cnx_data
-    with open(ROOT / ORACLE_CONFIG) as f:
-        cfg = json.load(f)["database"]
-    return read_cnx_data(cfg)[0]
-
-
-@pytest.fixture(params=BACKENDS)
-def backend(request):
-    return request.param
+@pytest.fixture(params=SETTINGS_FILES, ids=lambda path: path.stem)
+def settings(request):
+    with open(request.param) as f:
+        return json.load(f)["database"]
 
 
 @pytest.fixture
-def db_url(backend, tmp_path):
-    url = _oracle_url() if backend == "oracle" else f"sqlite:///{tmp_path / 'test.db'}"
-    engine = create_engine(url)
+def backend(settings):
+    return settings["type"]
+
+
+@pytest.fixture
+def db_cfg(settings):
+    # Full Conexion config (kwargs), logs included, as given by the settings file
+    # read_cnx_data pops some keys, so it gets a copy
+    cnx_data, cnx_data_extra, show_query, modifiers, config_log = read_cnx_data(dict(settings))
+    if settings["type"] == "sqlite":
+        Path(settings["path"]).parent.mkdir(parents=True, exist_ok=True)
+    engine = create_engine(cnx_data, **cnx_data_extra)
     metadata = MetaData()
     users = _users_table(metadata)
     metadata.drop_all(engine)
     metadata.create_all(engine)
     with engine.begin() as conn:
         conn.execute(insert(users), ROWS)
-    yield url
+    yield {
+        "cnx_data": cnx_data,
+        "cnx_data_extra": cnx_data_extra,
+        "show_query": show_query,
+        "modifiers": modifiers,
+        "config_log": config_log,
+    }
     metadata.drop_all(engine)
     engine.dispose()
 
 
 @pytest.fixture
-def async_db_url(db_url, backend):
-    # oracle+oracledb works with create_async_engine (async driver mode)
-    return db_url.replace("sqlite://", "sqlite+aiosqlite://", 1) if backend == "sqlite" else db_url
+def cnx_cfg(db_cfg):
+    # Without modifiers/show_query: generic tests expect lowercase keys
+    return {key: db_cfg[key] for key in ("cnx_data", "cnx_data_extra", "config_log")}
 
 
 @pytest.fixture
-def cnx(db_url):
-    from alchemy_api import Conexion
-    return Conexion(db_url)
+def async_db_cfg(cnx_cfg):
+    # oracle+oracledb works with create_async_engine (async driver mode); sqlite needs aiosqlite
+    if cnx_cfg["cnx_data"].startswith("sqlite://"):
+        return {**cnx_cfg, "cnx_data": cnx_cfg["cnx_data"].replace("sqlite://", "sqlite+aiosqlite://", 1)}
+    return cnx_cfg
 
 
 @pytest.fixture
-def cnx_no_raise(db_url):
+def cnx(cnx_cfg):
     from alchemy_api import Conexion
-    return Conexion(db_url, _raise=False)
+    return Conexion(**cnx_cfg)
+
+
+@pytest.fixture
+def cnx_no_raise(cnx_cfg):
+    from alchemy_api import Conexion
+    return Conexion(**cnx_cfg, _raise=False)

@@ -1,20 +1,14 @@
-import json
-
 import pytest
 
 from alchemy_api import Conexion
-from alchemy_api.utils import read_cnx_data
-from conftest import ORACLE_CONFIG, ROOT
 
 
 @pytest.fixture
-def oracle_cnx(backend, db_url):
+def oracle_cnx(backend, db_cfg):
     if backend != "oracle":
         pytest.skip("Oracle only")
-    # Built from the settings file, like the library is used in real apps
-    with open(ROOT / ORACLE_CONFIG) as f:
-        cnx_data, cnx_data_extra, show_query, modifiers, _ = read_cnx_data(json.load(f)["database"])
-    return Conexion(cnx_data, cnx_data_extra=cnx_data_extra, show_query=show_query, modifiers=modifiers)
+    # Full config from the settings file, like the library is used in real apps
+    return Conexion(**db_cfg)
 
 
 def test_modifiers_upper_case(oracle_cnx):

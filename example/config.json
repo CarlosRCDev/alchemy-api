@@ -1,0 +1,12 @@
+{
+    "database": {
+        "type": "sqlite",
+        "path": "example/db/example.db",
+        "show_query": true,
+        "log": {
+            "path": "example/logdb/example.log",
+            "level_log": "DEBUG",
+            "backup_count": 10
+        }
+    }
+}

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
@@ -141,17 +141,43 @@ def test_exec_sql_error_is_dbexception(cnx):
         cnx.exec_sql("SELECT * FROM missing_table", ret=True)
 
 
-def test_lower_cols_modifier(db_url):
+def test_lower_cols_modifier(cnx_cfg):
     from alchemy_api import Conexion
-    cnx = Conexion(db_url, modifiers={"lower_table": True, "lower_cols": True, "ret_upper_cols": True})
+    cnx = Conexion(**cnx_cfg, modifiers={"lower_table": True, "lower_cols": True, "ret_upper_cols": True})
     rows = cnx.select("USERS", colset=["NAME"], filterby={"ID": 1})
     assert rows == [{"NAME": "ana"}]
 
 
-def test_show_query_does_not_break(db_url, caplog):
+def test_show_query_does_not_break(cnx_cfg, caplog):
     from alchemy_api import Conexion
-    cnx = Conexion(db_url, show_query=True)
+    # Without config_log: the file logger does not propagate, so caplog would not see it
+    cnx = Conexion(**{**cnx_cfg, "config_log": None}, show_query=True)
     with caplog.at_level("INFO"):
         cnx.select("users", filterby={"id": 1})
         cnx.insert("users", {"id": 20, "name": "x", "age": 1})
     assert any("SELECT" in r.message for r in caplog.records)
+
+
+@pytest.mark.parametrize("log_name, rotated_name", [
+    ("app.log", "app.2000-01-0{}.log"),
+    ("app", "app.2000-01-0{}.log"),
+])
+def test_rotated_log_names(tmp_path, log_name, rotated_name):
+    # Independent of the settings files: rotation must not touch the logs of the real config
+    from alchemy_api import Conexion
+    log_path = tmp_path / log_name
+    for day in (1, 2, 3):
+        (tmp_path / rotated_name.format(day)).write_text(f"day {day}\n", encoding="utf-8")
+    (tmp_path / "other.2000-01-04.log").write_text("not mine\n", encoding="utf-8")
+    cnx = Conexion("sqlite://", config_log={"log_path": log_path, "backup_count": 2})
+    today = date.today().isoformat()
+    assert cnx.list_logs() == ["2000-01-01", "2000-01-02", "2000-01-03", today]
+    assert cnx.date_logs_order("2000-01-02") == ["day 2\n"]
+
+    # Rollover keeps the extension after the date and removes the oldest beyond backup_count
+    handler = cnx.logger.handlers[0]
+    handler.doRollover()
+    handler.close()
+    assert (tmp_path / rotated_name.replace("2000-01-0{}", today)).is_file()
+    assert not (tmp_path / rotated_name.format(1)).exists()
+    assert (tmp_path / "other.2000-01-04.log").is_file()
