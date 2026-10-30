@@ -2,4 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
-alchemy-api copy
+
+settings/
+# Test artifacts (paths from tests/settings)
+logdb/
+tests/db/
+example/db/
+example/logdb/
+settings/
