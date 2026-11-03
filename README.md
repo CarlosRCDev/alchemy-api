@@ -100,19 +100,65 @@ app.include_router(api_log_delete, prefix="/delete_log")
 
 ### Endpoints
 
-| Method | Path | Body |
-|---|---|---|
-| GET | `/db/tables` | |
-| POST | `/db/schema` | `{"table": "users"}` |
-| POST | `/db/select` | `{"table": "users", "filterby": {...}, "orderby": {...}, "colset": [...]}` |
-| POST | `/db/insert` | `{"table": "users", "data": [{...}]}` |
-| POST | `/db/update` | `{"table": "users", "data": {...}, "filterby": {...}}` |
-| POST | `/db/delete` | `{"table": "users", "filterby": {...}}` |
-| POST | `/db/sql` | `{"statement": "...", "parameters": {...}, "ret": true}` (only if enabled) |
-| GET | `/log` | list of log dates |
-| GET | `/log/order/{date}` | log lines |
-| GET | `/log/reverse/{date}/{n_line}` | last lines first |
-| DELETE | `/delete_log/{date}` | removes an old log |
+| Method | Path | Body | Operation |
+|---|---|---|---|
+| GET | `/db/tables` | | `tables` |
+| POST | `/db/schema` | `{"table": "users"}` | `schema` |
+| POST | `/db/select` | `{"table": "users", "filterby": {...}, "orderby": {...}, "colset": [...]}` | `select` |
+| POST | `/db/insert` | `{"table": "users", "data": [{...}]}` | `insert` |
+| POST | `/db/update` | `{"table": "users", "data": {...}, "filterby": {...}}` | `update` |
+| POST | `/db/delete` | `{"table": "users", "filterby": {...}}` | `delete` |
+| POST | `/db/sql` | `{"statement": "...", "parameters": {...}, "ret": true}` (only if enabled) | `sql` |
+| GET | `/log` | list of log dates | `log_read` |
+| GET | `/log/order/{date}` | log lines | `log_read` |
+| GET | `/log/reverse/{date}/{n_line}` | last lines first | `log_read` |
+| DELETE | `/delete_log/{date}` | removes an old log | `log_delete` |
+
+### Role permissions
+
+Roles are defined in the settings json, next to `"database"`. `"*"` allows every operation:
+
+```json
+{
+    "database": {"type": "sqlite", "path": "example.db"},
+    "roles": {
+        "admin": ["*"],
+        "editor": ["tables", "schema", "select", "insert", "update", "delete", "log_read"],
+        "reader": ["tables", "schema", "select"]
+    }
+}
+```
+
+The library does not authenticate: the app gives a `get_role(request)` function that returns the role
+of the request (from a JWT, an api key, a session...) or `None`.
+
+```python
+from alchemy_api.permissions import read_roles
+
+roles = read_roles(settings.get("roles"))  # ValueError on unknown operations
+
+def get_role(request):
+    return validate_token(request.headers.get("Authorization"))  # "admin", "reader", ... or None
+
+# Flask
+app.config["DB_ROLES"] = roles
+app.config["DB_GET_ROLE"] = get_role
+# FastAPI (get_role can also be async)
+app.state.roles = roles
+app.state.get_role = get_role
+```
+
+| Situation | Response |
+|---|---|
+| No `roles` configured | everything allowed (no control) |
+| `get_role` returns `None` | 401 |
+| Role unknown or without the operation | 403 |
+| `roles` configured but no `get_role` | 500 (refused, never open by mistake) |
+
+For use without api, `Conexion(..., read_only=True)` refuses `insert`, `update`, `delete` and `exec_sql` (403).
+Without the argument it is read from the `READ_ONLY` environment variable (`true`/`1`/`yes`/`on`, default off);
+an explicit `read_only=True/False` wins over the variable.
+For real protection also give read only roles a database user with only `SELECT` grants.
 
 ## Examples
 

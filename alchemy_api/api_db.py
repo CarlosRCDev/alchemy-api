@@ -1,7 +1,13 @@
+from functools import wraps
+
 from flask import Blueprint, jsonify, request, make_response, current_app
 
+from .permissions import check_permission
 from .utils import DbException, error
 ### FUNCTIONS ###
+# Connection in app.config["CNX"]. Optional role permissions:
+#   app.config["DB_ROLES"] = read_roles(settings.get("roles"))
+#   app.config["DB_GET_ROLE"] = get_role  # get_role(request) -> role name or None
 api_db = Blueprint("db", __name__, static_folder="static", template_folder="static")
 api_log = Blueprint("log", __name__, static_folder="static", template_folder="static")
 api_log_delete = Blueprint("delete_log", __name__, static_folder="static", template_folder="static")
@@ -10,6 +16,19 @@ api_log_delete = Blueprint("delete_log", __name__, static_folder="static", templ
 |                       Metodos Generales                      |
 --------------------------------------------------------------"""
 #Metodos generales (select,insert,delete,update) incluidos para testing.
+
+def require(operation):
+    """Checks the role of the request against app.config["DB_ROLES"] before the endpoint"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            roles = current_app.config.get("DB_ROLES")
+            get_role = current_app.config.get("DB_GET_ROLE")
+            role = get_role(request) if roles is not None and get_role else None
+            check_permission(roles, get_role, role, operation)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 @api_db.app_errorhandler(Exception)
 def error_handler(err):
@@ -26,6 +45,7 @@ def api_db_error(err):
 
 
 @api_db.route('/select', methods=['POST'])
+@require("select")
 def select(db_data=None):
     if not db_data:
         db_data = request.json
@@ -37,6 +57,7 @@ def select(db_data=None):
     return jsonify(result_db)
 
 @api_db.route('/insert', methods=['POST'])
+@require("insert")
 def insert():
     db_data = request.json
     table = db_data.pop("table", None)
@@ -50,6 +71,7 @@ def insert():
     return jsonify(insert = sum(map(lambda x: x.is_insert, result_db)))
 
 @api_db.route('/delete', methods=['POST'])
+@require("delete")
 def delete():
     db_data = request.json
     table = db_data.pop("table", None)
@@ -62,6 +84,7 @@ def delete():
     return jsonify(delete=result_db)
 
 @api_db.route('/update', methods=['POST'])
+@require("update")
 def update():
     db_data = request.json
     table = db_data.pop("table", None)
@@ -76,6 +99,7 @@ def update():
     return jsonify(update=result_db)
 
 @api_db.route('/tables', methods=['GET'])
+@require("tables")
 def tables():
 
     tables, views = current_app.config["CNX"].tables()
@@ -83,6 +107,7 @@ def tables():
     return jsonify(tables=tables, views=views)
 
 @api_db.route('/schema', methods=['POST'])
+@require("schema")
 def schema():
     db_data = request.json
     table = db_data.get("table", None)
@@ -93,6 +118,7 @@ def schema():
     return jsonify(schema)
 
 @api_db.route('/sql', methods=['POST'])
+@require("sql")
 def sql():
     # Raw SQL is only allowed when the app enables it explicitly
     if not current_app.config.get("DB_ALLOW_RAW_SQL", False):
@@ -114,15 +140,18 @@ def sql():
 
     
 @api_log.route("",  methods=["GET"])
+@require("log_read")
 def log_list():
     return jsonify(current_app.config["CNX"].list_logs())
 
 @api_log.route("/order/<date>",  methods=["GET"])
+@require("log_read")
 def log_date_order(date, n_line=None):
     return jsonify(current_app.config["CNX"].date_logs_order(date))
 
 @api_log.route("/reverse/<date>/<n_line>",  methods=["GET"])
 @api_log.route("/reverse/<date>",  methods=["GET"])
+@require("log_read")
 def log_date_reverse(date, n_line=None):
     if n_line:
         try:
@@ -132,6 +161,7 @@ def log_date_reverse(date, n_line=None):
     return jsonify(current_app.config["CNX"].date_logs_reverse(date, n_line))
 
 @api_log_delete.route("/<date>",  methods=["DELETE"])
+@require("log_delete")
 def delete_date(date):
     current_app.config["CNX"].delete_date_logs(date)
     return jsonify(msg=f"Removed log: {date}")

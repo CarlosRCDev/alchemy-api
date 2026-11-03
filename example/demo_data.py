@@ -3,6 +3,7 @@ import json
 from os import getenv
 from pathlib import Path
 
+from alchemy_api.permissions import read_roles
 from alchemy_api.utils import read_cnx_data
 
 # Settings file from the CONFIG_FILE env var, e.g. CONFIG_FILE=tests/settings/config_oracle.json
@@ -29,6 +30,21 @@ def load_config(config_file=CONFIG_FILE):
         "modifiers": modifiers,
         "config_log": config_log,
     }
+
+
+def load_roles(config_file=CONFIG_FILE):
+    """"roles" section of the settings json -> {role: operations}, None without roles"""
+    with open(config_file) as f:
+        return read_roles(json.load(f).get("roles"))
+
+
+# Demo only: api key -> role. A real app validates a token (JWT, OAuth2, ...) or looks the key up in a store
+API_KEYS = {"admin-key": "admin", "editor-key": "editor", "reader-key": "reader"}
+
+
+def get_role(request):
+    """Role of the request from the X-API-Key header (works with Flask and FastAPI requests)"""
+    return API_KEYS.get(request.headers.get("X-API-Key"))
 
 
 def create_demo_table(cnx):

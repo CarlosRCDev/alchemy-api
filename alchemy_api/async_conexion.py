@@ -15,14 +15,14 @@ from .utils import DbException, error, to_dict
 from .conexion import Conexion
 
 class AsyncConexion(Conexion):
-    def __init__(self, cnx_data, *, cnx_data_extra:dict=None, show_query:bool=False, modifiers:dict=None, config_log:dict=None, _raise:bool=True, engine=None, sess_maker=None) -> None:
+    def __init__(self, cnx_data, *, cnx_data_extra:dict=None, show_query:bool=False, modifiers:dict=None, config_log:dict=None, _raise:bool=True, read_only:bool=None, engine=None, sess_maker=None) -> None:
         if not engine:
             engine = create_async_engine(cnx_data, **(cnx_data_extra or {}))
         
         if not sess_maker:
             sess_maker = async_sessionmaker(engine)
         
-        super().__init__(cnx_data, cnx_data_extra=cnx_data_extra, show_query=show_query, modifiers=modifiers, config_log=config_log, _raise=_raise, engine=engine, sess_maker=sess_maker)
+        super().__init__(cnx_data, cnx_data_extra=cnx_data_extra, show_query=show_query, modifiers=modifiers, config_log=config_log, _raise=_raise, read_only=read_only, engine=engine, sess_maker=sess_maker)
 
     @classmethod
     async def create(cls, cnx_data, **kwargs):
@@ -117,6 +117,7 @@ class AsyncConexion(Conexion):
             return result[0] if count else result
 
     async def insert(self, table:str, data:list, **kwargs):
+        self._require_writable()
         if isinstance(data, dict):
             data = [data]
         _table = self._get_table(table)
@@ -145,6 +146,7 @@ class AsyncConexion(Conexion):
         return result
 
     async def delete(self, table:str, filterby:dict, **kwargs):
+        self._require_writable()
         ### TODO ###
         # add lower case and upper case methods like others
         _table = self._get_table(table)
@@ -170,6 +172,7 @@ class AsyncConexion(Conexion):
         return result.rowcount
     
     async def update(self, table:str, data:dict, *, filterby:dict=None, **kwargs):
+        self._require_writable()
         _table = self._get_table(table)
 
         statement = db_update(_table)
@@ -207,6 +210,7 @@ class AsyncConexion(Conexion):
         return result.rowcount
 
     async def exec_sql(self, statement, *, ret:bool=False, bind:dict=None):
+        self._require_writable()
         if bind is None:
             bind = {}
         if isinstance(statement, str):

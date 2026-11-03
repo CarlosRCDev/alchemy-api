@@ -22,9 +22,27 @@ error = namedtuple(
     defaults=[400, None]
     )
 
+_TRUE = {"1", "true", "yes", "on"}
+_FALSE = {"0", "false", "no", "off", ""}
+
+
+def env_bool(name:str, default:bool=False) -> bool:
+    """Boolean environment variable: 1/true/yes/on or 0/false/no/off (any case)"""
+    value = getenv(name)
+    if value is None:
+        return default
+    value = value.strip().lower()
+    if value in _TRUE:
+        return True
+    if value in _FALSE:
+        return False
+    raise ValueError(f"Not valid boolean in env var {name}: {value!r}")
+
+
 def read_cnx_data(cfg_data):
     type_ = cfg_data.get("type", getenv("DB_TYPE"))
-    show_query = cfg_data.get('show_query', getenv("DB_SHOW_QUERY", False))
+    # The env var is only read (and validated) when the config has no show_query
+    show_query = cfg_data["show_query"] if "show_query" in cfg_data else env_bool("DB_SHOW_QUERY")
     modifiers = cfg_data.get("modifiers", {})
     cnx_data_extra = cfg_data.get("cnx_data_extra", {})
     if type_ == "oracle":

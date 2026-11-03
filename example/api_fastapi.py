@@ -7,10 +7,10 @@ Other settings file (default example/config.json):
 
 Docs: http://127.0.0.1:8000/docs
 Try it (orderby {"col": true} is descending, false ascending):
-    curl http://127.0.0.1:8000/db/tables
-    curl -X POST http://127.0.0.1:8000/db/select -H "Content-Type: application/json" \
+    curl http://127.0.0.1:8000/db/tables -H "X-API-Key: reader-key"
+    curl -X POST http://127.0.0.1:8000/db/select -H "X-API-Key: reader-key" -H "Content-Type: application/json" \
          -d '{"table": "users", "filterby": {"age": 30}, "orderby": {"name": true}}'
-    curl http://127.0.0.1:8000/log
+    curl http://127.0.0.1:8000/log -H "X-API-Key: admin-key"
 """
 from contextlib import asynccontextmanager
 
@@ -18,7 +18,7 @@ from fastapi import FastAPI
 
 from alchemy_api import Conexion
 from alchemy_api.api_fastapi import api_db, api_log, api_log_delete, register_exception_handlers
-from demo_data import create_demo_table, load_config
+from demo_data import create_demo_table, get_role, load_config, load_roles
 
 
 @asynccontextmanager
@@ -29,6 +29,9 @@ async def lifespan(app):
     create_demo_table(app.state.cnx)
     # /db/sql is disabled unless this is True
     app.state.allow_raw_sql = False
+    # Permissions from the "roles" section of the settings file (None: no control)
+    app.state.roles = load_roles()
+    app.state.get_role = get_role
     yield
     app.state.cnx._engine.dispose()
 

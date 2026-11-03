@@ -16,7 +16,7 @@ from sqlalchemy import or_ as db_or, and_ as db_and
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.elements import TextClause
 
-from .utils import DbException, error, to_dict, read_file_reverse
+from .utils import DbException, env_bool, error, to_dict, read_file_reverse
 
 
 def _rotated_log_path(log_path:Path, log_date:str) -> Path:
@@ -75,10 +75,12 @@ def _configure_logger(config_log):
 
 
 class Conexion:
-    def __init__(self, cnx_data, *, cnx_data_extra:dict=None, show_query:bool=False, modifiers:dict=None, config_log:dict=None, _raise:bool=True, engine=None, sess_maker=None) -> None:
+    def __init__(self, cnx_data, *, cnx_data_extra:dict=None, show_query:bool=False, modifiers:dict=None, config_log:dict=None, _raise:bool=True, read_only:bool=None, engine=None, sess_maker=None) -> None:
         modifiers = modifiers or {}
         self.show_query = show_query
         self._raise = _raise
+        # Refuse insert, update, delete and exec_sql. None: READ_ONLY env var (default False)
+        self._read_only = env_bool("READ_ONLY") if read_only is None else read_only
         if engine:
             self._engine = engine
         else:
@@ -235,6 +237,7 @@ class Conexion:
             return result[0] if count else result
 
     def insert(self, table:str, data:list, **kwargs):
+        self._require_writable()
         if isinstance(data, dict):
             data = [data]
         _table = self._get_table(table)
@@ -259,6 +262,7 @@ class Conexion:
         return result
 
     def delete(self, table:str, filterby:dict, **kwargs):
+        self._require_writable()
         ### TODO ###
         # add lower case and upper case methods like others
         _table = self._get_table(table)
@@ -284,6 +288,7 @@ class Conexion:
         return result.rowcount
     
     def update(self, table:str, data:dict, *, filterby:dict=None, **kwargs):
+        self._require_writable()
         _table = self._get_table(table)
 
         statement = db_update(_table)
@@ -326,6 +331,7 @@ class Conexion:
         return schema_
 
     def exec_sql(self, statement, *, ret:bool=False, bind:dict=None):
+        self._require_writable()
         bind = bind or {}
         if isinstance(statement, str):
             statement = TextClause(statement)
@@ -369,6 +375,10 @@ class Conexion:
         
         return cols
     
+    def _require_writable(self):
+        if self._read_only:
+            raise DbException(error("Read only connection", 403, False)) from None
+
     def _require_filterby(self, filterby):
         if not filterby:
             raise DbException(error("filterby is required", 400)) from None

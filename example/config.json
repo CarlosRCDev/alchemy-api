@@ -8,5 +8,24 @@
             "level_log": "DEBUG",
             "backup_count": 10
         }
+    },
+    "roles": {
+        "admin": [
+            "*"
+        ],
+        "editor": [
+            "tables",
+            "schema",
+            "select",
+            "insert",
+            "update",
+            "delete",
+            "log_read"
+        ],
+        "reader": [
+            "tables",
+            "schema",
+            "select"
+        ]
     }
 }

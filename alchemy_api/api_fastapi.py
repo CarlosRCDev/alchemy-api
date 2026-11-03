@@ -6,6 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, StrictBool
 
+from .permissions import check_permission
 from .utils import DbException, error
 ### FUNCTIONS ###
 # Equivalent of api_db.py for FastAPI. The connection (Conexion or AsyncConexion)
@@ -17,6 +18,10 @@ from .utils import DbException, error
 #   app.include_router(api_db, prefix="/db")
 #   app.include_router(api_log, prefix="/log")
 #   app.include_router(api_log_delete, prefix="/delete_log")
+#
+# Optional role permissions:
+#   app.state.roles = read_roles(settings.get("roles"))
+#   app.state.get_role = get_role  # get_role(request) -> role name or None, sync or async
 api_db = APIRouter(tags=["db"])
 api_log = APIRouter(tags=["log"])
 api_log_delete = APIRouter(tags=["delete_log"])
@@ -51,6 +56,16 @@ async def _call(method, *args, **kwargs):
     if iscoroutinefunction(method):
         return await method(*args, **kwargs)
     return await run_in_threadpool(method, *args, **kwargs)
+
+
+def require(operation):
+    """Dependency that checks the role of the request against app.state.roles"""
+    async def check(request: Request):
+        roles = getattr(request.app.state, "roles", None)
+        get_role = getattr(request.app.state, "get_role", None)
+        role = await _call(get_role, request) if roles is not None and get_role else None
+        check_permission(roles, get_role, role, operation)
+    return Depends(check)
 
 
 class SelectBody(BaseModel):
@@ -91,28 +106,28 @@ class SqlBody(BaseModel):
     ret: StrictBool = False
 
 
-@api_db.post("/select")
+@api_db.post("/select", dependencies=[require("select")])
 async def select(body: SelectBody, cnx=Depends(get_cnx)):
     db_data = body.model_dump(exclude_unset=True)
     table = db_data.pop("table")
     return await _call(cnx.select, table=table, **db_data)
 
 
-@api_db.post("/insert")
+@api_db.post("/insert", dependencies=[require("insert")])
 async def insert(body: InsertBody, cnx=Depends(get_cnx)):
     if not body.data: raise DbException(error("Not data in post", 400)) from None
     result_db = await _call(cnx.insert, table=body.table, data=body.data)
     return {"insert": sum(map(lambda x: x.is_insert, result_db))}
 
 
-@api_db.post("/delete")
+@api_db.post("/delete", dependencies=[require("delete")])
 async def delete(body: DeleteBody, cnx=Depends(get_cnx)):
     if not body.filterby: raise DbException(error("Not filterby in post", 400)) from None
     result_db = await _call(cnx.delete, table=body.table, filterby=body.filterby)
     return {"delete": result_db}
 
 
-@api_db.post("/update")
+@api_db.post("/update", dependencies=[require("update")])
 async def update(body: UpdateBody, cnx=Depends(get_cnx)):
     if not body.data: raise DbException(error("Not data in post", 400)) from None
     if not body.filterby: raise DbException(error("Not filterby in post", 400)) from None
@@ -120,18 +135,18 @@ async def update(body: UpdateBody, cnx=Depends(get_cnx)):
     return {"update": result_db}
 
 
-@api_db.get("/tables")
+@api_db.get("/tables", dependencies=[require("tables")])
 async def tables(cnx=Depends(get_cnx)):
     tables, views = cnx.tables()
     return {"tables": tables, "views": views}
 
 
-@api_db.post("/schema")
+@api_db.post("/schema", dependencies=[require("schema")])
 async def schema(body: SchemaBody, cnx=Depends(get_cnx)):
     return cnx.schema(body.table)
 
 
-@api_db.post("/sql")
+@api_db.post("/sql", dependencies=[require("sql")])
 async def sql(body: SqlBody, request: Request, cnx=Depends(get_cnx)):
     # Raw SQL is only allowed when the app enables it explicitly
     if not getattr(request.app.state, "allow_raw_sql", False):
@@ -143,23 +158,23 @@ async def sql(body: SqlBody, request: Request, cnx=Depends(get_cnx)):
     return Response(status_code=204)
 
 
-@api_log.get("")
+@api_log.get("", dependencies=[require("log_read")])
 async def log_list(cnx=Depends(get_cnx)):
     return cnx.list_logs()
 
 
-@api_log.get("/order/{date}")
+@api_log.get("/order/{date}", dependencies=[require("log_read")])
 async def log_date_order(date: str, cnx=Depends(get_cnx)):
     return await _call(cnx.date_logs_order, date)
 
 
-@api_log.get("/reverse/{date}")
-@api_log.get("/reverse/{date}/{n_line}")
+@api_log.get("/reverse/{date}", dependencies=[require("log_read")])
+@api_log.get("/reverse/{date}/{n_line}", dependencies=[require("log_read")])
 async def log_date_reverse(date: str, n_line: int | None = None, cnx=Depends(get_cnx)):
     return await _call(cnx.date_logs_reverse, date, n_line)
 
 
-@api_log_delete.delete("/{date}")
+@api_log_delete.delete("/{date}", dependencies=[require("log_delete")])
 async def delete_date(date: str, cnx=Depends(get_cnx)):
     cnx.delete_date_logs(date)
     return {"msg": f"Removed log: {date}"}
