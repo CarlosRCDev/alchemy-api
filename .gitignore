@@ -10,3 +10,4 @@ tests/db/
 example/db/
 example/logdb/
 settings/
+dist/

@@ -1,7 +1,7 @@
 """Conexion class without a REST api, configured with a python dict
 
 Run from the project root:
-    PYTHONPATH=. uv run python example/class_dict.py
+    uv run python example/class_dict.py
 """
 from pathlib import Path
 

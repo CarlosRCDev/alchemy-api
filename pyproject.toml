@@ -1,7 +1,25 @@
 [project]
-name = "alchemy-api"
+name = "sqlalchemy-rest-api"
 version = "0.1.0"
+description = "CRUD with python dicts and auto REST api (Flask/FastAPI) over existing databases with SQLAlchemy reflection"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Carlos RC" }]
 requires-python = ">=3.12"
+keywords = ["sqlalchemy", "rest", "api", "crud", "flask", "fastapi", "oracle", "reflection"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: Flask",
+    "Framework :: FastAPI",
+    "Topic :: Database",
+    "Topic :: Database :: Front-Ends",
+]
 dependencies = [
     "sqlalchemy>=2.1.6",
 ]
@@ -13,9 +31,32 @@ flask = [
 fastapi = [
     "fastapi>=0.162.0",
 ]
+async = [
+    "sqlalchemy[asyncio]>=2.1.6",
+]
 oracle = [
     "oracledb>=26.1.0",
 ]
+mariadb = [
+    "pymysql>=1.1.0",
+]
+postgres = [
+    "psycopg>=3.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/CarlosRCDev/alchemy-api"
+Repository = "https://github.com/CarlosRCDev/alchemy-api"
+Issues = "https://github.com/CarlosRCDev/alchemy-api/issues"
+
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# Distribution "sqlalchemy-rest-api", import "alchemy_api" (flat layout, no src/)
+module-name = "alchemy_api"
+module-root = ""
 
 [dependency-groups]
 dev = [

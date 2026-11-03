@@ -1,7 +1,7 @@
 """REST api with Flask
 
 Run from the project root:
-    PYTHONPATH=. uv run python example/api_flask.py
+    uv run python example/api_flask.py
 
 Try it (orderby {"col": true} is descending, false ascending):
     curl http://127.0.0.1:5000/db/tables

@@ -1,7 +1,7 @@
 """REST api with FastAPI
 
 Run from the project root (uvicorn is not a project dependency):
-    PYTHONPATH=. uv run --with uvicorn python example/api_fastapi.py
+    uv run --with uvicorn python example/api_fastapi.py
 
 Docs: http://127.0.0.1:8000/docs
 Try it (orderby {"col": true} is descending, false ascending):
