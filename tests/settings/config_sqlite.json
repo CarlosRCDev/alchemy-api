@@ -1,0 +1,37 @@
+{
+    "database": {
+        "type": "sqlite",
+        "path": "tests/db/test_sqlite.db",
+        "show_query": true,
+        "modifiers": {
+            "lower_table": true,
+            "lower_cols": true,
+            "ret_upper_table": true,
+            "ret_upper_cols": true
+        },
+        "log": {
+            "path": "tests/logdb/log_sqlite.log",
+            "level_log": "DEBUG",
+            "backup_count": 10
+        }
+    },
+    "roles": {
+        "admin": [
+            "*"
+        ],
+        "editor": [
+            "tables",
+            "schema",
+            "select",
+            "insert",
+            "update",
+            "delete",
+            "log_read"
+        ],
+        "reader": [
+            "tables",
+            "schema",
+            "select"
+        ]
+    }
+}

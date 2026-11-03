@@ -1,17 +1,21 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+.venv/
+.pytest_cache/
 
-settings/
-# Test artifacts (paths from tests/settings)
+# Build and publish
+dist/
+.publish.env
+
+# Local settings and secrets. Only the root settings/: tests/settings is versioned
+/settings/
+.env
+
+# Runtime data: databases and logs (paths from the settings files)
+/db/
 logdb/
 tests/db/
 example/db/
 example/logdb/
-settings/
-dist/
-.publish.env
-.env
-
-/db
