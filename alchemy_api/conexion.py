@@ -276,8 +276,6 @@ class Conexion:
 
     def delete(self, table:str, filterby:dict, **kwargs):
         self._require_writable()
-        ### TODO ###
-        # add lower case and upper case methods like others
         _table = self._get_table(table)
 
         statement = db_delete(_table)
@@ -349,9 +347,7 @@ class Conexion:
         if isinstance(statement, str):
             statement = TextClause(statement)
         with self._session() as session:
-            ## TODO
             self._show_query(statement, bindparams=bind)
-            ## TODO
             if ret:
                 return to_dict(session.execute(statement, params=bind).all())
             session.execute(statement, params=bind)

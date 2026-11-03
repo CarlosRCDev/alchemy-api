@@ -134,8 +134,6 @@ class AsyncConexion(Conexion):
 
     async def delete(self, table:str, filterby:dict, **kwargs):
         self._require_writable()
-        ### TODO ###
-        # add lower case and upper case methods like others
         _table = self._get_table(table)
 
         statement = db_delete(_table)
@@ -203,9 +201,7 @@ class AsyncConexion(Conexion):
         if isinstance(statement, str):
             statement = TextClause(statement)
         async with self._async_session() as session:
-            ## TODO
             self._show_query(statement, bindparams=bind)
-            ## TODO
             result = await session.execute(statement, params=bind)
             await session.commit()
             if ret:                
