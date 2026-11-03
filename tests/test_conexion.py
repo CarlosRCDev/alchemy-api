@@ -85,8 +85,9 @@ def test_send_colnames_false(cnx):
 
 def test_insert_with_datetime(cnx):
     data = {"id": 10, "name": "nuevo", "age": 1, "created": {"value": "2026-01-02 03:04", "dt_format": "%Y-%m-%d %H:%M"}}
-    result = cnx.insert("users", data)
-    assert len(result) == 1
+    assert cnx.insert("users", data) == 1
+    # The input is not modified: dt_format is converted on a copy
+    assert data["created"] == {"value": "2026-01-02 03:04", "dt_format": "%Y-%m-%d %H:%M"}
     row = cnx.select("users", filterby={"id": 10}, dt_format="%Y-%m-%d %H:%M")
     assert row[0]["created"] == "2026-01-02 03:04"
 
@@ -181,3 +182,42 @@ def test_rotated_log_names(tmp_path, log_name, rotated_name):
     assert (tmp_path / rotated_name.replace("2000-01-0{}", today)).is_file()
     assert not (tmp_path / rotated_name.format(1)).exists()
     assert (tmp_path / "other.2000-01-04.log").is_file()
+
+
+def test_insert_many_rows(cnx):
+    rows = [{"id": 100 + i, "name": f"n{i}", "age": i} for i in range(500)]
+    assert cnx.insert("users", rows) == 500
+    assert list(cnx.select("users", count=True).values()) == [504]
+
+
+def test_insert_rows_with_different_columns(cnx):
+    # executemany needs the same columns: rows are grouped, every row is inserted with its own columns
+    rows = [
+        {"id": 20, "name": "a", "age": 1},
+        {"id": 21, "name": "b"},
+        {"id": 22, "name": "c"},
+        {"id": 23, "name": "d", "age": 4},
+    ]
+    assert cnx.insert("users", rows) == 4
+    got = cnx.select("users", colset=["id", "age"], filterby={"id": {"type": ">=", "value": 20}}, orderby={"id": False})
+    assert got == [{"id": 20, "age": 1}, {"id": 21, "age": None}, {"id": 22, "age": None}, {"id": 23, "age": 4}]
+
+
+def test_insert_empty(cnx):
+    assert cnx.insert("users", []) == 0
+
+
+def test_insert_is_atomic(cnx):
+    # id 1 already exists: the whole insert fails and no row is left
+    with pytest.raises(DbException):
+        cnx.insert("users", [{"id": 30, "name": "x", "age": 1}, {"id": 1, "name": "dup", "age": 1}])
+    assert cnx.select("users", filterby={"id": 30}) == []
+
+
+def test_insert_logs_once_per_group(cnx_cfg, caplog):
+    from alchemy_api import Conexion
+    cnx = Conexion(**{**cnx_cfg, "config_log": None}, show_query=True)
+    with caplog.at_level("INFO"):
+        cnx.insert("users", [{"id": 40 + i, "name": "x", "age": i} for i in range(50)])
+    inserts = [r.message for r in caplog.records if "INSERT" in r.message]
+    assert len(inserts) == 1 and "first of 50 rows" in inserts[0]

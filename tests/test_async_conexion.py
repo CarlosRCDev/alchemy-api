@@ -70,3 +70,12 @@ def test_async_update_delete_require_filter(async_db_cfg):
                 await cnx.delete("users", filterby={"typo": 1})
             return await cnx.select("users", count=True)
     assert list(run(main()).values()) == [4]
+
+
+def test_async_insert_many_rows(async_db_cfg):
+    async def main():
+        async with _cnx(async_db_cfg) as cnx:
+            inserted = await cnx.insert("users", [{"id": 200 + i, "name": "a", "age": i} for i in range(300)])
+            return inserted, await cnx.select("users", count=True)
+    inserted, count = run(main())
+    assert (inserted, list(count.values())) == (300, [304])

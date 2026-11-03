@@ -2,6 +2,7 @@
 from re import sub as re_sub
 from contextlib import contextmanager
 from datetime import date as date_cls, datetime
+from itertools import groupby
 import logging
 import logging.handlers
 from pathlib import Path
@@ -241,25 +242,37 @@ class Conexion:
         if isinstance(data, dict):
             data = [data]
         _table = self._get_table(table)
+        rows = self._insert_rows(data)
+        if not rows:
+            return 0
 
-        statement = db_insert(_table)
-
-        if self._lower_cols:
-            data = self._to_lower_cols(data)
-        
-        result = []
         with self._session() as session:
-            for row in data:
-                for col_k, col_v in row.items():
-                    if isinstance(col_v, dict) and "dt_format" in col_v:
-                        row[col_k] = self._to_datetime(col_v)
-                _statement = statement.values(row)
-                self._show_query(_statement, bindparams=row)
-                row_result = session.execute(_statement)
-                result.append(row_result)
+            for statement, group in self._insert_groups(_table, rows):
+                session.execute(statement, group)
             session.commit()
 
-        return result
+        return len(rows)
+
+    def _insert_rows(self, data:list) -> list:
+        """Rows ready to insert: lower case columns and dt_format values as datetime (input not modified)"""
+        if self._lower_cols:
+            data = self._to_lower_cols(data)
+        return [
+            {
+                col_k: self._to_datetime(col_v) if isinstance(col_v, dict) and "dt_format" in col_v else col_v
+                for col_k, col_v in row.items()
+            }
+            for row in data
+        ]
+
+    def _insert_groups(self, _table, rows:list):
+        """(statement, rows) to run as executemany, one round trip per group instead of one per row.
+        executemany needs the same columns in every row, so consecutive rows are grouped by their columns"""
+        statement = db_insert(_table)
+        for _, group in groupby(rows, key=frozenset):
+            group = list(group)
+            self._show_query(statement.values(group[0]), n_rows=len(group))
+            yield statement, group
 
     def delete(self, table:str, filterby:dict, **kwargs):
         self._require_writable()
@@ -512,13 +525,16 @@ class Conexion:
             query = statement.compile(bind=self._engine, compile_kwargs={"literal_binds": True})
         return query
     
-    def _show_query(self, statement, bindparams:dict=None):
+    def _show_query(self, statement, bindparams:dict=None, n_rows:int=1):
         if self.show_query or self._logger.isEnabledFor(logging.DEBUG):
             try:
                 query = self._compile(statement, bindparams=bindparams)
             except Exception as e:
                 query = f"Error compiling query: {str(e)}"
             log_query = str(query).replace("\n", "\\n")
+            if n_rows > 1:
+                # Bulk insert: the first row is logged, not every row
+                log_query = f"{log_query} -- first of {n_rows} rows"
             if self.show_query:
                 self._logger.info(log_query)
             else:

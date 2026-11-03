@@ -117,8 +117,9 @@ def test_logs(cnx_cfg):
         assert today in client.get("/log").json()
         lines = client.get(f"/log/order/{today}").json()
         assert "Start Application" in lines[0]
+        # Last line first, whatever the log level of the settings file (queries only with DEBUG/show_query)
         reverse = client.get(f"/log/reverse/{today}/1").json()
-        assert len(reverse) == 1 and "SELECT" in reverse[0]
+        assert reverse == [lines[-1].rstrip("\n")]
         assert client.get("/log/reverse/2000-01-01").status_code == 404
         # The current log can not be removed
         assert client.delete(f"/delete_log/{today}").status_code == 400

@@ -68,7 +68,7 @@ def insert():
 
     result_db = current_app.config["CNX"].insert(table=table, data=data)
     
-    return jsonify(insert = sum(map(lambda x: x.is_insert, result_db)))
+    return jsonify(insert=result_db)
 
 @api_db.route('/delete', methods=['POST'])
 @require("delete")

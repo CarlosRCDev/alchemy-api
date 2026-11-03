@@ -117,7 +117,7 @@ async def select(body: SelectBody, cnx=Depends(get_cnx)):
 async def insert(body: InsertBody, cnx=Depends(get_cnx)):
     if not body.data: raise DbException(error("Not data in post", 400)) from None
     result_db = await _call(cnx.insert, table=body.table, data=body.data)
-    return {"insert": sum(map(lambda x: x.is_insert, result_db))}
+    return {"insert": result_db}
 
 
 @api_db.post("/delete", dependencies=[require("delete")])

@@ -2,7 +2,7 @@
     "database": {
         "type": "sqlite",
         "path": "tests/db/test_sqlite.db",
-        "show_query": true,
+        "show_query": false,
         "modifiers": {
             "lower_table": true,
             "lower_cols": true,
@@ -11,7 +11,7 @@
         },
         "log": {
             "path": "tests/logdb/log_sqlite.log",
-            "level_log": "DEBUG",
+            "level_log": "INFO",
             "backup_count": 10
         }
     },

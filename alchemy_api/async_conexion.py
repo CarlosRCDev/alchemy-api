@@ -121,29 +121,16 @@ class AsyncConexion(Conexion):
         if isinstance(data, dict):
             data = [data]
         _table = self._get_table(table)
+        rows = self._insert_rows(data)
+        if not rows:
+            return 0
 
-        statement = db_insert(_table)
-
-        if self._lower_cols:
-            data = self._to_lower_cols(data)
-        
-        result = []
         async with self._async_session() as session:
-            for row in data:
-                # for col_k, col_v in row.items():
-                    # if isinstance(col_v, dict) and "dt_format" in col_v:
-                        # row[col_k] = self._to_datetime(col_v)
-                row = {
-                    col_k: self._to_datetime(col_v) if isinstance(col_v, dict) and "dt_format" in col_v else col_v
-                    for col_k, col_v in row.items()
-                }
-                _statement = statement.values(row)
-                self._show_query(_statement, bindparams=row)
-                row_result = await session.execute(_statement)
-                result.append(row_result)
+            for statement, group in self._insert_groups(_table, rows):
+                await session.execute(statement, group)
             await session.commit()
 
-        return result
+        return len(rows)
 
     async def delete(self, table:str, filterby:dict, **kwargs):
         self._require_writable()

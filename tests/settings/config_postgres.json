@@ -6,10 +6,10 @@
         "server": "localhost",
         "port": 5433,
         "db": "test",
-        "show_query": true,
+        "show_query": false,
         "log": {
             "path": "tests/logdb/log_postgres.log",
-            "level_log": "DEBUG",
+            "level_log": "INFO",
             "backup_count": 10
         }
     },
