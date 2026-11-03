@@ -1,10 +1,12 @@
 """Demo table shared by the examples: users(id, name, age, created)"""
 import json
+from os import getenv
 from pathlib import Path
 
 from alchemy_api.utils import read_cnx_data
 
-CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
+# Settings file from the CONFIG_FILE env var, e.g. CONFIG_FILE=tests/settings/config_oracle.json
+CONFIG_FILE = Path(getenv("CONFIG_FILE", Path(__file__).resolve().parent / "config.json"))
 
 ROWS = [
     {"id": 1, "name": "ana", "age": 30},

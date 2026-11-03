@@ -2,6 +2,8 @@
 
 Run from the project root (uvicorn comes with the [fastapi] extra):
     uv run python example/api_fastapi.py
+Other settings file (default example/config.json):
+    CONFIG_FILE=tests/settings/config_oracle.json uv run python example/api_fastapi.py
 
 Docs: http://127.0.0.1:8000/docs
 Try it (orderby {"col": true} is descending, false ascending):

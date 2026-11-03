@@ -2,6 +2,8 @@
 
 Run from the project root:
     uv run python example/api_flask.py
+Other settings file (default example/config.json):
+    CONFIG_FILE=tests/settings/config_oracle.json uv run python example/api_flask.py
 
 Try it (orderby {"col": true} is descending, false ascending):
     curl http://127.0.0.1:5000/db/tables
