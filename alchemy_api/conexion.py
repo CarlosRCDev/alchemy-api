@@ -16,7 +16,7 @@ from sqlalchemy import or_ as db_or, and_ as db_and
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.elements import TextClause
 
-from .utils import DbExecption, error, to_dict, read_file_reverse
+from .utils import DbException, error, to_dict, read_file_reverse
 
 
 def _rotated_log_path(log_path:Path, log_date:str) -> Path:
@@ -127,7 +127,7 @@ class Conexion:
             except Exception as e:
                 str_error = str(e)
                 self._logger.error(str_error.replace("\n", "\\n"))
-                raise DbExecption(error(str_error, 400)) from None
+                raise DbException(error(str_error, 400)) from None
             finally:
                 session.close()
 
@@ -160,7 +160,7 @@ class Conexion:
             if isinstance(_column, Column):
                 __table.append(_column)
             elif self._raise:
-                raise DbExecption(error(f"column: {column}, not find in table", 400)) from None
+                raise DbException(error(f"column: {column}, not find in table", 400)) from None
         if __table:
             return __table
         else:
@@ -192,7 +192,7 @@ class Conexion:
 
         if self._raise and colset:
             cols_error = list(filter(lambda x: x not in columns_table, colset))
-            if any(cols_error): raise DbExecption(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
+            if any(cols_error): raise DbException(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
 
         if filterby:
             if self._lower_cols:
@@ -203,7 +203,7 @@ class Conexion:
                     cols_error = list(filter(lambda x: x not in columns_table, cols))
                 else:
                     cols_error = list(filter(lambda x: x not in columns_table, filterby.keys()))
-                if any(cols_error): raise DbExecption(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
+                if any(cols_error): raise DbException(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
                 
             statement = self._filterby(_table, statement, columns_table, filterby)
         
@@ -272,7 +272,7 @@ class Conexion:
 
         if self._raise:
             cols_error = list(filter(lambda x: x not in columns, cols_statement))
-            if any(cols_error): raise DbExecption(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
+            if any(cols_error): raise DbException(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
         statement = self._filterby(_table, statement, columns, filterby)
         self._require_where(statement)
 
@@ -281,7 +281,7 @@ class Conexion:
             result = session.execute(statement)
             session.commit()
 
-        return result
+        return result.rowcount
     
     def update(self, table:str, data:dict, *, filterby:dict=None, **kwargs):
         _table = self._get_table(table)
@@ -296,7 +296,7 @@ class Conexion:
 
         if self._raise:
             cols_error = list(filter(lambda x: x not in columns, cols_statement))
-            if any(cols_error): raise DbExecption(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
+            if any(cols_error): raise DbException(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
 
         statement = self._filterby(_table, statement, columns, filterby)
         self._require_where(statement)
@@ -309,8 +309,8 @@ class Conexion:
             self._show_query(statement)
             result = session.execute(statement)
             session.commit()
-         
-        return result
+
+        return result.rowcount
     
     def tables(self):
         ret_tables = list(set(self.metadata.tables.keys()) - set(self._views)), self._views
@@ -344,7 +344,7 @@ class Conexion:
         _table = self._metadata.tables.get(table, None)
         
         if not isinstance(_table, Table):
-            raise DbExecption(error(f"Not find table: {table} in db", 400)) from None
+            raise DbException(error(f"Not find table: {table} in db", 400)) from None
         
         return _table
 
@@ -371,12 +371,12 @@ class Conexion:
     
     def _require_filterby(self, filterby):
         if not filterby:
-            raise DbExecption(error("filterby is required", 400)) from None
+            raise DbException(error("filterby is required", 400)) from None
 
     def _require_where(self, statement):
         # Avoid DELETE/UPDATE over the whole table when every filter column was discarded
         if statement.whereclause is None:
-            raise DbExecption(error("filterby: no valid conditions, refusing to affect the whole table", 400)) from None
+            raise DbException(error("filterby: no valid conditions, refusing to affect the whole table", 400)) from None
 
     def _orderby(self, statement, _table, orderby):
         valid_columns = self._valid_columns(_table, orderby.keys())
@@ -393,7 +393,7 @@ class Conexion:
             return valid_columns
         else:
             if self._raise:
-                raise DbExecption(error(f"none of the columns are valid, columns: {', '.join(colset)}", 400)) from None
+                raise DbException(error(f"none of the columns are valid, columns: {', '.join(colset)}", 400)) from None
             return [_table]
     
     def _filterby(self, table, statement, columns, filterby):
@@ -473,7 +473,7 @@ class Conexion:
             elif type_ == "between":
                 condition = col.between(value.get("value1"), value.get("value2"))
             elif self._raise:
-                raise DbExecption(error(f"none of the type are valid, col: {col}, value: {type_}", 400)) from None
+                raise DbException(error(f"none of the type are valid, col: {col}, value: {type_}", 400)) from None
             else:
                 condition = None
         else:
@@ -519,7 +519,7 @@ class Conexion:
     
     def list_logs(self):
         if not self._log_path:
-            raise DbExecption(error("log not instanciated", 404, False)) from None
+            raise DbException(error("log not instanciated", 404, False)) from None
         dates = set()
         for log_file in self._log_path.parent.iterdir():
             if not log_file.is_file() or log_file.name == self._log_path.name:
@@ -536,7 +536,7 @@ class Conexion:
 
     def _date_log_path(self, log_date:str):
         if not self._log_path:
-            raise DbExecption(error("log not instanciated", 404, False)) from None
+            raise DbException(error("log not instanciated", 404, False)) from None
         try:
             if date_cls.fromisoformat(log_date).isoformat() != log_date:
                 return None
@@ -553,21 +553,21 @@ class Conexion:
         if log_path:
             with log_path.open("r", encoding="utf-8") as file:
                 return file.readlines()
-        raise DbExecption(error("date not find", 404, False)) from None
+        raise DbException(error("date not find", 404, False)) from None
 
     def date_logs_reverse(self, date:str, n_line:int=None):
         log_path = self._date_log_path(date)
         if log_path:
             return read_file_reverse(log_path, n_line)
-        raise DbExecption(error("date not find", 404, False)) from None
+        raise DbException(error("date not find", 404, False)) from None
 
     def delete_date_logs(self, date:str):
         if not self._log_path:
-            raise DbExecption(error("log not instanciated", 404, False)) from None
+            raise DbException(error("log not instanciated", 404, False)) from None
         if date == date_cls.today().isoformat():
-            raise DbExecption(error("log with date is using now", 400, False)) from None
+            raise DbException(error("log with date is using now", 400, False)) from None
         log_path = self._date_log_path(date)
         if log_path:
             log_path.unlink()
             return True
-        raise DbExecption(error("date not find", 404, False)) from None
+        raise DbException(error("date not find", 404, False)) from None

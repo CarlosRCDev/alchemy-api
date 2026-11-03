@@ -6,7 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, StrictBool
 
-from .utils import DbExecption, error
+from .utils import DbException, error
 ### FUNCTIONS ###
 # Equivalent of api_db.py for FastAPI. The connection (Conexion or AsyncConexion)
 # is read from app.state.cnx and raw SQL is enabled with app.state.allow_raw_sql.
@@ -27,8 +27,8 @@ api_log_delete = APIRouter(tags=["delete_log"])
 #Metodos generales (select,insert,delete,update) incluidos para testing.
 
 def register_exception_handlers(app: FastAPI):
-    @app.exception_handler(DbExecption)
-    async def api_db_error(request: Request, err: DbExecption):
+    @app.exception_handler(DbException)
+    async def api_db_error(request: Request, err: DbException):
         return JSONResponse(
             {"error": str(err), "url": str(request.url)},
             status_code=getattr(err, "status_code", None) or 500,
@@ -42,7 +42,7 @@ def register_exception_handlers(app: FastAPI):
 def get_cnx(request: Request):
     cnx = getattr(request.app.state, "cnx", None)
     if cnx is None:
-        raise DbExecption(error("Connection not configured in app.state.cnx", 500)) from None
+        raise DbException(error("Connection not configured in app.state.cnx", 500)) from None
     return cnx
 
 
@@ -100,24 +100,24 @@ async def select(body: SelectBody, cnx=Depends(get_cnx)):
 
 @api_db.post("/insert")
 async def insert(body: InsertBody, cnx=Depends(get_cnx)):
-    if not body.data: raise DbExecption(error("Not data in post", 400)) from None
+    if not body.data: raise DbException(error("Not data in post", 400)) from None
     result_db = await _call(cnx.insert, table=body.table, data=body.data)
     return {"insert": sum(map(lambda x: x.is_insert, result_db))}
 
 
 @api_db.post("/delete")
 async def delete(body: DeleteBody, cnx=Depends(get_cnx)):
-    if not body.filterby: raise DbExecption(error("Not filterby in post", 400)) from None
+    if not body.filterby: raise DbException(error("Not filterby in post", 400)) from None
     result_db = await _call(cnx.delete, table=body.table, filterby=body.filterby)
-    return {"delete": result_db.rowcount}
+    return {"delete": result_db}
 
 
 @api_db.post("/update")
 async def update(body: UpdateBody, cnx=Depends(get_cnx)):
-    if not body.data: raise DbExecption(error("Not data in post", 400)) from None
-    if not body.filterby: raise DbExecption(error("Not filterby in post", 400)) from None
+    if not body.data: raise DbException(error("Not data in post", 400)) from None
+    if not body.filterby: raise DbException(error("Not filterby in post", 400)) from None
     result_db = await _call(cnx.update, table=body.table, data=body.data, filterby=body.filterby)
-    return {"update": result_db.rowcount}
+    return {"update": result_db}
 
 
 @api_db.get("/tables")
@@ -135,7 +135,7 @@ async def schema(body: SchemaBody, cnx=Depends(get_cnx)):
 async def sql(body: SqlBody, request: Request, cnx=Depends(get_cnx)):
     # Raw SQL is only allowed when the app enables it explicitly
     if not getattr(request.app.state, "allow_raw_sql", False):
-        raise DbExecption(error("Endpoint /sql disabled, set app.state.allow_raw_sql", 403)) from None
+        raise DbException(error("Endpoint /sql disabled, set app.state.allow_raw_sql", 403)) from None
 
     result_db = await _call(cnx.exec_sql, statement=body.statement, ret=body.ret, bind=body.parameters)
     if body.ret:

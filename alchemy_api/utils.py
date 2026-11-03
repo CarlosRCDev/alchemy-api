@@ -7,7 +7,7 @@ from sqlalchemy.engine.cursor import CursorResult
 _logger = logging.getLogger(__name__)
 
 
-class DbExecption(Exception):
+class DbException(Exception):
     def __init__(self, rsp):
         super().__init__(rsp.text)
         self.status_code = rsp.status_code
@@ -71,7 +71,7 @@ def read_cnx_data(cfg_data):
         db = cfg_data.get("db", getenv("DB_DB"))
         cnx_data = f"postgresql+psycopg://{user}:{password}@{server}:{port}/{db}"
     else:
-        raise DbExecption(error(f"Not valid type: {type_}", 400)) from None
+        raise DbException(error(f"Not valid type: {type_}", 400)) from None
     _config_log = cfg_data.get("log", {})
     config_log = {}
     if _config_log:

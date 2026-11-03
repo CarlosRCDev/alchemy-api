@@ -1,4 +1,4 @@
-from alchemy_api.utils import DbExecption, error, read_file_reverse
+from alchemy_api.utils import DbException, error, read_file_reverse
 
 
 def test_read_file_reverse_across_chunks(tmp_path):
@@ -16,10 +16,10 @@ def test_read_file_reverse_n_line(tmp_path):
 
 
 def test_dbexception():
-    exc = DbExecption(error("boom", 404, False))
+    exc = DbException(error("boom", 404, False))
     assert str(exc) == "boom"
     assert exc.status_code == 404
     assert exc.trace is None
-    exc = DbExecption(error("boom"))
+    exc = DbException(error("boom"))
     assert exc.status_code == 400
     assert exc.trace is None

@@ -11,7 +11,7 @@ from sqlalchemy import update as db_update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.sql.elements import TextClause
 
-from .utils import DbExecption, error, to_dict
+from .utils import DbException, error, to_dict
 from .conexion import Conexion
 
 class AsyncConexion(Conexion):
@@ -51,7 +51,7 @@ class AsyncConexion(Conexion):
                 await session.rollback()
                 str_error = str(e)
                 self._logger.error(str_error.replace("\n", "\\n"))
-                raise DbExecption(error(str_error, 400)) from None
+                raise DbException(error(str_error, 400)) from None
             finally:
                 await session.close()
     
@@ -73,7 +73,7 @@ class AsyncConexion(Conexion):
 
         if self._raise and colset:
             cols_error = list(filter(lambda x: x not in columns_table, colset))
-            if any(cols_error): raise DbExecption(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
+            if any(cols_error): raise DbException(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
 
         if filterby:
             if self._lower_cols:
@@ -84,7 +84,7 @@ class AsyncConexion(Conexion):
                     cols_error = list(filter(lambda x: x not in columns_table, cols))
                 else:
                     cols_error = list(filter(lambda x: x not in columns_table, filterby.keys()))
-                if any(cols_error): raise DbExecption(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
+                if any(cols_error): raise DbException(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
                 
             statement = self._filterby(_table, statement, columns_table, filterby)
         
@@ -158,7 +158,7 @@ class AsyncConexion(Conexion):
 
         if self._raise:
             cols_error = list(filter(lambda x: x not in columns, cols_statement))
-            if any(cols_error): raise DbExecption(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
+            if any(cols_error): raise DbException(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
         statement = self._filterby(_table, statement, columns, filterby)
         self._require_where(statement)
 
@@ -167,7 +167,7 @@ class AsyncConexion(Conexion):
             result = await session.execute(statement)
             await session.commit()
 
-        return result
+        return result.rowcount
     
     async def update(self, table:str, data:dict, *, filterby:dict=None, **kwargs):
         _table = self._get_table(table)
@@ -182,7 +182,7 @@ class AsyncConexion(Conexion):
 
         if self._raise:
             cols_error = list(filter(lambda x: x not in columns, cols_statement))
-            if any(cols_error): raise DbExecption(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
+            if any(cols_error): raise DbException(error(f"Cols: {', '.join(cols_error)} not find in table", 400)) from None
 
         statement = self._filterby(_table, statement, columns, filterby)
         self._require_where(statement)
@@ -203,8 +203,8 @@ class AsyncConexion(Conexion):
             self._show_query(statement)
             result = await session.execute(statement)
             await session.commit()
-        
-        return result
+
+        return result.rowcount
 
     async def exec_sql(self, statement, *, ret:bool=False, bind:dict=None):
         if bind is None:

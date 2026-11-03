@@ -42,9 +42,9 @@ print("age > 26:", cnx.select("users", filterby={"age": {"type": ">", "value": 2
 print("count:", cnx.select("users", count=True))
 
 cnx.insert("users", [{"id": 10, "name": "pepa", "age": 40}])
-print("updated:", cnx.update("users", {"age": 41}, filterby={"id": 10}).rowcount)
+print("updated:", cnx.update("users", {"age": 41}, filterby={"id": 10}))
 print("pepa:", cnx.select("users", filterby={"id": 10}))
-print("deleted:", cnx.delete("users", filterby={"id": 10}).rowcount)
+print("deleted:", cnx.delete("users", filterby={"id": 10}))
 
 print("sql:", cnx.exec_sql("SELECT name FROM users WHERE age = :age", ret=True, bind={"age": 25}))
 print("logs:", cnx.list_logs())

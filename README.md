@@ -44,8 +44,8 @@ cnx.select("users", filterby={"age": 30}, orderby={"name": False})
 cnx.select("users", colset=["name"], filterby={"age": {"type": ">", "value": 26}})
 cnx.select("users", count=True)                # {"count": 3}
 cnx.insert("users", [{"id": 10, "name": "pepa", "age": 40}])
-cnx.update("users", {"age": 41}, filterby={"id": 10}).rowcount
-cnx.delete("users", filterby={"id": 10}).rowcount
+cnx.update("users", {"age": 41}, filterby={"id": 10})  # 1 (rows)
+cnx.delete("users", filterby={"id": 10})  # 1 (rows)
 cnx.exec_sql("SELECT name FROM users WHERE age = :age", ret=True, bind={"age": 25})
 ```
 

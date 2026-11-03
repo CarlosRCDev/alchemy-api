@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 import pytest
 
-from alchemy_api.utils import DbExecption
+from alchemy_api.utils import DbException
 
 
 def names(rows):
@@ -28,12 +28,12 @@ def test_select_count(cnx):
 
 
 def test_select_unknown_table(cnx):
-    with pytest.raises(DbExecption):
+    with pytest.raises(DbException):
         cnx.select("nope")
 
 
 def test_select_unknown_filter_column_raises(cnx):
-    with pytest.raises(DbExecption):
+    with pytest.raises(DbException):
         cnx.select("users", filterby={"typo": 1})
 
 
@@ -60,7 +60,7 @@ def test_filter_list_or(cnx):
 
 
 def test_filter_invalid_type_raises(cnx):
-    with pytest.raises(DbExecption):
+    with pytest.raises(DbException):
         cnx.select("users", filterby={"age": {"type": "??", "value": 1}})
 
 
@@ -93,40 +93,40 @@ def test_insert_with_datetime(cnx):
 
 def test_update_with_filter(cnx):
     result = cnx.update("users", {"age": 99}, filterby={"name": "luis"})
-    assert result.rowcount == 1
+    assert result == 1
     assert cnx.select("users", filterby={"id": 2})[0]["age"] == 99
 
 
 def test_update_without_filter_is_refused(cnx):
-    with pytest.raises(DbExecption):
+    with pytest.raises(DbException):
         cnx.update("users", {"age": 0})
     assert len(cnx.select("users", filterby={"age": 0})) == 0
 
 
 def test_update_unknown_column_message(cnx):
-    with pytest.raises(DbExecption, match="typo"):
+    with pytest.raises(DbException, match="typo"):
         cnx.update("users", {"age": 0}, filterby={"typo": 1})
 
 
 def test_delete_with_filter(cnx):
-    assert cnx.delete("users", filterby={"id": 1}).rowcount == 1
+    assert cnx.delete("users", filterby={"id": 1}) == 1
     assert len(cnx.select("users")) == 3
 
 
 def test_delete_without_filter_is_refused(cnx):
-    with pytest.raises(DbExecption):
+    with pytest.raises(DbException):
         cnx.delete("users", filterby={})
     assert len(cnx.select("users")) == 4
 
 
 def test_delete_unknown_column_no_raise_does_not_wipe_table(cnx_no_raise):
-    with pytest.raises(DbExecption):
+    with pytest.raises(DbException):
         cnx_no_raise.delete("users", filterby={"typo": 1})
     assert len(cnx_no_raise.select("users")) == 4
 
 
 def test_update_unknown_column_no_raise_does_not_touch_table(cnx_no_raise):
-    with pytest.raises(DbExecption):
+    with pytest.raises(DbException):
         cnx_no_raise.update("users", {"age": 0}, filterby={"typo": 1})
     assert len(cnx_no_raise.select("users", filterby={"age": 0})) == 0
 
@@ -137,7 +137,7 @@ def test_exec_sql(cnx):
 
 
 def test_exec_sql_error_is_dbexception(cnx):
-    with pytest.raises(DbExecption):
+    with pytest.raises(DbException):
         cnx.exec_sql("SELECT * FROM missing_table", ret=True)
 
 

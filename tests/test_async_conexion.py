@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from alchemy_api import AsyncConexion
-from alchemy_api.utils import DbExecption
+from alchemy_api.utils import DbException
 
 
 def run(coro):
@@ -38,7 +38,7 @@ def test_async_error_is_dbexception(async_db_cfg):
     async def main():
         cnx = await _cnx(async_db_cfg)
         await cnx.exec_sql("SELECT * FROM missing_table", ret=True)
-    with pytest.raises(DbExecption):
+    with pytest.raises(DbException):
         run(main())
 
 
@@ -48,7 +48,7 @@ def test_async_insert_update_delete(async_db_cfg):
         await cnx.insert("users", {"id": 50, "name": "async", "age": 5})
         updated = await cnx.update("users", {"age": 6}, filterby={"id": 50})
         deleted = await cnx.delete("users", filterby={"id": 50})
-        return updated.rowcount, deleted.rowcount, await cnx.select("users", count=True)
+        return updated, deleted, await cnx.select("users", count=True)
     updated, deleted, count = run(main())
     assert (updated, deleted, list(count.values())) == (1, 1, [4])
 
@@ -56,9 +56,9 @@ def test_async_insert_update_delete(async_db_cfg):
 def test_async_update_delete_require_filter(async_db_cfg):
     async def main():
         cnx = await _cnx(async_db_cfg, _raise=False)
-        with pytest.raises(DbExecption):
+        with pytest.raises(DbException):
             await cnx.update("users", {"age": 0})
-        with pytest.raises(DbExecption):
+        with pytest.raises(DbException):
             await cnx.delete("users", filterby={"typo": 1})
         return await cnx.select("users", count=True)
     assert list(run(main()).values()) == [4]
