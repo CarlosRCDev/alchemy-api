@@ -2,9 +2,10 @@
 import json
 from os import getenv
 from pathlib import Path
+import warnings
 
 from alchemy_api.permissions import read_roles
-from alchemy_api.utils import read_cnx_data
+from alchemy_api.utils import DbException, read_cnx_data
 
 # Settings file from the CONFIG_FILE env var, e.g. CONFIG_FILE=tests/settings/config_oracle.json
 CONFIG_FILE = Path(getenv("CONFIG_FILE", Path(__file__).resolve().parent / "config.json"))
@@ -49,11 +50,17 @@ def get_role(request):
 
 
 def create_demo_table(cnx):
-    """Creates and fills the users table if it does not exist yet"""
+    """Creates and fills the users table if it does not exist yet; only warns if it can not"""
     tables, _ = cnx.tables()
-    if "users" in tables:
+    # Case insensitive: with ret_upper_table (Oracle settings) tables() returns "USERS"
+    if "users" in (table.lower() for table in tables):
+        warnings.warn("Table users already exists, demo data not created", stacklevel=2)
         return
-    cnx.exec_sql("CREATE TABLE users (id INTEGER PRIMARY KEY, name VARCHAR(50), age INTEGER, created TIMESTAMP)")
-    # Conexion reflects the tables when it is created, so it has to reload them
-    cnx.post_conexion()
-    cnx.insert("users", ROWS)
+    try:
+        cnx.exec_sql("CREATE TABLE users (id INTEGER PRIMARY KEY, name VARCHAR(50), age INTEGER, created TIMESTAMP)")
+        # Conexion reflects the tables when it is created, so it has to reload them
+        cnx.post_conexion()
+        cnx.insert("users", ROWS)
+    except DbException as e:
+        # e.g. READ_ONLY connection or no CREATE grant: the api starts anyway
+        warnings.warn(f"Demo table users not created: {e}", stacklevel=2)
