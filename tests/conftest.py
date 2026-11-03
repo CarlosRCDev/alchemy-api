@@ -11,6 +11,11 @@ from alchemy_api.utils import read_cnx_data
 SETTINGS_DIR = Path(__file__).resolve().parent / "settings"
 SETTINGS_FILES = sorted(SETTINGS_DIR.glob("*.json"))
 
+ASYNC_DRIVERS = {
+    "sqlite://": "sqlite+aiosqlite://",
+    "mariadb+pymysql://": "mariadb+aiomysql://",
+}
+
 ROWS = [
     {"id": 1, "name": "ana", "age": 30},
     {"id": 2, "name": "luis", "age": 25},
@@ -84,9 +89,11 @@ def cnx_cfg(db_cfg):
 
 @pytest.fixture
 def async_db_cfg(cnx_cfg):
-    # oracle+oracledb works with create_async_engine (async driver mode); sqlite needs aiosqlite
-    if cnx_cfg["cnx_data"].startswith("sqlite://"):
-        return {**cnx_cfg, "cnx_data": cnx_cfg["cnx_data"].replace("sqlite://", "sqlite+aiosqlite://", 1)}
+    # oracle+oracledb and postgresql+psycopg work with create_async_engine as they are;
+    # sqlite and mariadb need their async driver
+    for sync_prefix, async_prefix in ASYNC_DRIVERS.items():
+        if cnx_cfg["cnx_data"].startswith(sync_prefix):
+            return {**cnx_cfg, "cnx_data": cnx_cfg["cnx_data"].replace(sync_prefix, async_prefix, 1)}
     return cnx_cfg
 
 

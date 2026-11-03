@@ -39,11 +39,14 @@ async = [
 oracle = [
     "oracledb>=26.1.0",
 ]
+# Database drivers: each extra has the sync and the async driver ([async] adds greenlet)
 mariadb = [
     "pymysql>=1.1.0",
+    "aiomysql>=0.3.2",
 ]
 postgres = [
-    "psycopg>=3.1",
+    # binary: wheels with libpq included, no system library needed
+    "psycopg[binary]>=3.1",
 ]
 # Every extra above; keep in sync when adding a new one
 all = [
@@ -66,12 +69,15 @@ module-root = ""
 
 [dependency-groups]
 dev = [
+    "aiomysql>=0.3.2",
     "aiosqlite>=0.22.1",
     "fastapi>=0.162.0",
     "flask>=3.1.3",
     "greenlet>=3.5.6",
     "httpx2>=2.16.0",
     "oracledb>=26.1.0",
+    "psycopg[binary]>=3.3.6",
+    "pymysql>=1.2.3",
     "pytest>=9.2.0",
     "uvicorn>=0.54.0",
 ]

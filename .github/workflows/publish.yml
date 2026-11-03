@@ -20,6 +20,29 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Same databases as compose-postgres.yaml and compose-mariadb.yaml (tests/settings)
+    services:
+      postgres:
+        image: postgres:17
+        ports: ["5433:5432"]
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd "pg_isready -U test -d test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      mariadb:
+        image: mariadb:11
+        ports: ["3306:3306"]
+        env:
+          MARIADB_ROOT_PASSWORD: test
+          MARIADB_USER: test
+          MARIADB_PASSWORD: test
+          MARIADB_DATABASE: test
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -32,7 +55,7 @@ jobs:
             exit 1
           fi
 
-      # Oracle settings need a database server, CI runs the sqlite ones
+      # sqlite, postgres and mariadb; Oracle is too heavy for CI
       - name: Tests
         run: uv run --locked pytest -q -k "not config_oracle"
 

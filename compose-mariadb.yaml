@@ -1,0 +1,19 @@
+# Test database for tests/settings/config_mariadb.json
+#   docker compose -f compose-mariadb.yaml up -d --wait
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: mariadb-test
+    ports:
+      - "3306:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: test
+      MARIADB_USER: test
+      MARIADB_PASSWORD: test
+      MARIADB_DATABASE: test
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s

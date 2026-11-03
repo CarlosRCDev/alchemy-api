@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -11,14 +12,21 @@ def run(coro):
     return asyncio.run(coro)
 
 
+@asynccontextmanager
 async def _cnx(cfg, **kwargs):
-    return await AsyncConexion.create(**cfg, **kwargs)
+    # Dispose the engine inside the event loop: otherwise async drivers (aiomysql)
+    # close their connections on garbage collection, after the loop is closed
+    cnx = await AsyncConexion.create(**cfg, **kwargs)
+    try:
+        yield cnx
+    finally:
+        await cnx._engine.dispose()
 
 
 def test_async_select(async_db_cfg):
     async def main():
-        cnx = await _cnx(async_db_cfg)
-        return await cnx.select("users", filterby={"age": 30}, orderby={"id": False})
+        async with _cnx(async_db_cfg) as cnx:
+            return await cnx.select("users", filterby={"age": 30}, orderby={"id": False})
     assert [r["name"] for r in run(main())] == ["ana", "marta"]
 
 
@@ -36,29 +44,29 @@ def test_async_with_engine_only(async_db_cfg):
 def test_async_error_is_dbexception(async_db_cfg):
     # Previously the real error was hidden by an AttributeError on self.__logger
     async def main():
-        cnx = await _cnx(async_db_cfg)
-        await cnx.exec_sql("SELECT * FROM missing_table", ret=True)
+        async with _cnx(async_db_cfg) as cnx:
+            await cnx.exec_sql("SELECT * FROM missing_table", ret=True)
     with pytest.raises(DbException):
         run(main())
 
 
 def test_async_insert_update_delete(async_db_cfg):
     async def main():
-        cnx = await _cnx(async_db_cfg)
-        await cnx.insert("users", {"id": 50, "name": "async", "age": 5})
-        updated = await cnx.update("users", {"age": 6}, filterby={"id": 50})
-        deleted = await cnx.delete("users", filterby={"id": 50})
-        return updated, deleted, await cnx.select("users", count=True)
+        async with _cnx(async_db_cfg) as cnx:
+            await cnx.insert("users", {"id": 50, "name": "async", "age": 5})
+            updated = await cnx.update("users", {"age": 6}, filterby={"id": 50})
+            deleted = await cnx.delete("users", filterby={"id": 50})
+            return updated, deleted, await cnx.select("users", count=True)
     updated, deleted, count = run(main())
     assert (updated, deleted, list(count.values())) == (1, 1, [4])
 
 
 def test_async_update_delete_require_filter(async_db_cfg):
     async def main():
-        cnx = await _cnx(async_db_cfg, _raise=False)
-        with pytest.raises(DbException):
-            await cnx.update("users", {"age": 0})
-        with pytest.raises(DbException):
-            await cnx.delete("users", filterby={"typo": 1})
-        return await cnx.select("users", count=True)
+        async with _cnx(async_db_cfg, _raise=False) as cnx:
+            with pytest.raises(DbException):
+                await cnx.update("users", {"age": 0})
+            with pytest.raises(DbException):
+                await cnx.delete("users", filterby={"typo": 1})
+            return await cnx.select("users", count=True)
     assert list(run(main()).values()) == [4]

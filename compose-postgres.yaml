@@ -1,0 +1,19 @@
+# Test database for tests/settings/config_postgres.json
+#   docker compose -f compose-postgres.yaml up -d --wait
+# Host port 5433: 5432 is usually taken by a local PostgreSQL
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgres-test
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s

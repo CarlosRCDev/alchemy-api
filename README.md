@@ -20,7 +20,18 @@ pip install "sqlalchemy-rest-api[async]"   # + AsyncConexion (includes aiosqlite
 pip install "sqlalchemy-rest-api[all]"     # everything: apis, async and all database drivers
 ```
 
-Database drivers: `[oracle]`, `[mariadb]`, `[postgres]` (sqlite needs nothing).
+Database drivers, each one with its sync and async driver (async also needs `[async]`):
+
+| Extra | Drivers | `type` in the settings json |
+|---|---|---|
+| `[oracle]` | `oracledb` | `oracle` |
+| `[mariadb]` | `pymysql`, `aiomysql` | `mariadb`, `async_mariadb` |
+| `[postgres]` | `psycopg[binary]` (no system `libpq` needed) | `psycopg` |
+| none | sqlite is built in (`aiosqlite` comes with `[async]`) | `sqlite` |
+
+```bash
+pip install "sqlalchemy-rest-api[fastapi,async,postgres]"   # e.g. async FastAPI over PostgreSQL
+```
 
 The package is imported as `alchemy_api`.
 
