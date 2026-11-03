@@ -11,3 +11,5 @@ example/db/
 example/logdb/
 settings/
 dist/
+.publish.env
+.env

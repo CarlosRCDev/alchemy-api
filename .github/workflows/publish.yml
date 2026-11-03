@@ -1,0 +1,77 @@
+# Release on tag push: tests -> build -> TestPyPI -> PyPI
+#
+#   git tag -a v0.1.5 -m "Release 0.1.5" && git push origin v0.1.5    (or ./publish.sh tag)
+#
+# No tokens: PyPI/TestPyPI "Trusted Publishing" (OIDC). One time setup in both sites:
+#   Project > Publishing > Add GitHub publisher
+#     owner: CarlosRCDev, repository: alchemy-api, workflow: publish.yml,
+#     environment: testpypi (TestPyPI) / pypi (PyPI)
+# Optional: GitHub > Settings > Environments > pypi > "Required reviewers" to approve
+# each PyPI release by hand after checking it in TestPyPI.
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Tag matches pyproject version
+        run: |
+          VERSION="$(uv version --short)"
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match pyproject version $VERSION"
+            exit 1
+          fi
+
+      # Oracle settings need a database server, CI runs the sqlite ones
+      - name: Tests
+        run: uv run --locked pytest -q -k "not config_oracle"
+
+      - name: Build
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/sqlalchemy-rest-api/
+    permissions:
+      id-token: write  # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: astral-sh/setup-uv@v6
+      - run: uv publish --trusted-publishing always --publish-url https://test.pypi.org/legacy/
+
+  pypi:
+    needs: testpypi
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/sqlalchemy-rest-api/
+    permissions:
+      id-token: write  # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: astral-sh/setup-uv@v6
+      - run: uv publish --trusted-publishing always
