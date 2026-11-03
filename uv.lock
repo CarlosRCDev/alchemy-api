@@ -848,18 +848,30 @@ asyncio = [
 
 [[package]]
 name = "sqlalchemy-rest-api"
-version = "0.1.0"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "sqlalchemy" },
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "aiosqlite" },
+    { name = "fastapi" },
+    { name = "flask" },
+    { name = "oracledb" },
+    { name = "psycopg" },
+    { name = "pymysql" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "uvicorn" },
+]
 async = [
+    { name = "aiosqlite" },
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
 fastapi = [
     { name = "fastapi" },
+    { name = "uvicorn" },
 ]
 flask = [
     { name = "flask" },
@@ -888,6 +900,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiosqlite", marker = "extra == 'async'", specifier = ">=0.22.1" },
     { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.162.0" },
     { name = "flask", marker = "extra == 'flask'", specifier = ">=3.1.3" },
     { name = "oracledb", marker = "extra == 'oracle'", specifier = ">=26.1.0" },
@@ -895,8 +908,10 @@ requires-dist = [
     { name = "pymysql", marker = "extra == 'mariadb'", specifier = ">=1.1.0" },
     { name = "sqlalchemy", specifier = ">=2.1.6" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'async'", specifier = ">=2.1.6" },
+    { name = "sqlalchemy-rest-api", extras = ["flask", "fastapi", "async", "oracle", "mariadb", "postgres"], marker = "extra == 'all'" },
+    { name = "uvicorn", marker = "extra == 'fastapi'", specifier = ">=0.54.0" },
 ]
-provides-extras = ["flask", "fastapi", "async", "oracle", "mariadb", "postgres"]
+provides-extras = ["flask", "fastapi", "async", "oracle", "mariadb", "postgres", "all"]
 
 [package.metadata.requires-dev]
 dev = [

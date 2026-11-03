@@ -15,11 +15,12 @@ Tables are read with SQLAlchemy reflection: no models to write.
 ```bash
 pip install sqlalchemy-rest-api            # core
 pip install "sqlalchemy-rest-api[flask]"   # + Flask api
-pip install "sqlalchemy-rest-api[fastapi]" # + FastAPI api
-pip install "sqlalchemy-rest-api[async]"   # + AsyncConexion
+pip install "sqlalchemy-rest-api[fastapi]" # + FastAPI api and uvicorn server
+pip install "sqlalchemy-rest-api[async]"   # + AsyncConexion (includes aiosqlite for async sqlite)
+pip install "sqlalchemy-rest-api[all]"     # everything: apis, async and all database drivers
 ```
 
-Database drivers: `[oracle]`, `[mariadb]`, `[postgres]` (sqlite needs nothing; async sqlite needs `aiosqlite`).
+Database drivers: `[oracle]`, `[mariadb]`, `[postgres]` (sqlite needs nothing).
 
 The package is imported as `alchemy_api`.
 

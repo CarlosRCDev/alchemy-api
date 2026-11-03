@@ -1,6 +1,6 @@
 [project]
 name = "sqlalchemy-rest-api"
-version = "0.1.1"
+version = "0.1.2"
 description = "CRUD with python dicts and auto REST api (Flask/FastAPI) over existing databases with SQLAlchemy reflection"
 readme = "README.md"
 license = "MIT"
@@ -30,9 +30,11 @@ flask = [
 ]
 fastapi = [
     "fastapi>=0.162.0",
+    "uvicorn>=0.54.0",
 ]
 async = [
     "sqlalchemy[asyncio]>=2.1.6",
+    "aiosqlite>=0.22.1",
 ]
 oracle = [
     "oracledb>=26.1.0",
@@ -42,6 +44,10 @@ mariadb = [
 ]
 postgres = [
     "psycopg>=3.1",
+]
+# Every extra above; keep in sync when adding a new one
+all = [
+    "sqlalchemy-rest-api[flask,fastapi,async,oracle,mariadb,postgres]",
 ]
 
 [project.urls]
