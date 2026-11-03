@@ -40,11 +40,12 @@ def load_roles(config_file=CONFIG_FILE):
 
 # Demo only: api key -> role. A real app validates a token (JWT, OAuth2, ...) or looks the key up in a store
 API_KEYS = {"admin-key": "admin", "editor-key": "editor", "reader-key": "reader"}
+API_KEY_HEADER = "X-API-Key"
 
 
 def get_role(request):
-    """Role of the request from the X-API-Key header (works with Flask and FastAPI requests)"""
-    return API_KEYS.get(request.headers.get("X-API-Key"))
+    """Role of the request from the API_KEY_HEADER header (works with Flask and FastAPI requests)"""
+    return API_KEYS.get(request.headers.get(API_KEY_HEADER))
 
 
 def create_demo_table(cnx):

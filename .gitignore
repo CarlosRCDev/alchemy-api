@@ -13,3 +13,5 @@ settings/
 dist/
 .publish.env
 .env
+
+/db
