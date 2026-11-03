@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.security import APIKeyHeader
 
-from alchemy_api import Conexion
+from alchemy_api import Conexion, __version__
 from alchemy_api.api_fastapi import api_db, api_log, api_log_delete, register_exception_handlers
 from alchemy_api.utils import env_bool
 from demo_data import API_KEY_HEADER, create_demo_table, get_role, load_config, load_roles
@@ -54,7 +54,13 @@ def swagger_auth_options():
     }
 
 
-app = FastAPI(lifespan=lifespan, **swagger_auth_options())
+# Swagger version: installed version of the library
+app = FastAPI(
+    title="sqlalchemy-rest-api",
+    version=__version__,
+    lifespan=lifespan,
+    **swagger_auth_options(),
+)
 register_exception_handlers(app)
 app.include_router(api_db, prefix="/db")
 app.include_router(api_log, prefix="/log")
