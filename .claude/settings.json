@@ -3,7 +3,8 @@
     "deny": [
       "Read(./.env)",
       "Read(./.env.*)",
-      "Read(./publish.sh)"
+      "Read(./publish.sh)",
+      "Read(./publish.env)"
     ]
   }
 }

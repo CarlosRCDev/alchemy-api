@@ -63,6 +63,26 @@ cnx.exec_sql("SELECT name FROM users WHERE age = :age", ret=True, bind={"age": 2
 
 A plain SQLAlchemy url also works: `Conexion("sqlite:///example.db")`.
 
+Instead of `type` and its keys, the settings can give the SQLAlchemy url directly with `uri`
+(or the `DB_URI` environment variable when the settings have neither `uri` nor `type`).
+`uri` wins over `type`; `show_query`, `modifiers`, `cnx_data_extra` and `log` work the same:
+
+```json
+{
+    "database": {
+        "uri": "postgresql+psycopg://user:password@host:5432/database",
+        "show_query": true,
+        "modifiers": {"lower_table": true, "lower_cols": true},
+        "log": {"path": "logdb/app.log", "level_log": "DEBUG", "backup_count": 10}
+    }
+}
+```
+
+The url goes to SQLAlchemy as is, so pick the driver in it (`postgresql+psycopg://`,
+`mariadb+pymysql://`, `oracle+oracledb://`, `sqlite:///path.db`; async drivers for
+`AsyncConexion`) and URL-encode special characters in the password (`@` -> `%40`).
+A plain `postgresql://` uses psycopg2, which is not one of the extras.
+
 ### Filters
 
 ```python

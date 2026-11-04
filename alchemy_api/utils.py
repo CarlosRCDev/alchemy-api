@@ -1,7 +1,9 @@
 from collections import namedtuple
 import logging
 from os import getenv
+from sqlalchemy.engine import make_url
 from sqlalchemy.engine.row import Row
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.engine.cursor import CursorResult
 
 _logger = logging.getLogger(__name__)
@@ -39,13 +41,33 @@ def env_bool(name:str, default:bool=False) -> bool:
     raise ValueError(f"Not valid boolean in env var {name}: {value!r}")
 
 
+def _read_uri(cfg_data) -> str | None:
+    """SQLAlchemy url given directly: "uri" in the config, else DB_URI when the config has no type"""
+    uri = cfg_data.get("uri")
+    if uri is None and "type" not in cfg_data:
+        uri = getenv("DB_URI")
+    if uri is None:
+        return None
+    if not isinstance(uri, str) or not uri.strip():
+        raise DbException(error("Not valid uri: it must be a non empty string", 400)) from None
+    try:
+        make_url(uri.strip())
+    except ArgumentError:
+        # The uri may hold a password, so it is not included in the message
+        raise DbException(error("Not valid uri: it is not a SQLAlchemy url", 400)) from None
+    return uri.strip()
+
+
 def read_cnx_data(cfg_data):
+    uri = _read_uri(cfg_data)
     type_ = cfg_data.get("type", getenv("DB_TYPE"))
     # The env var is only read (and validated) when the config has no show_query
     show_query = cfg_data["show_query"] if "show_query" in cfg_data else env_bool("DB_SHOW_QUERY")
     modifiers = cfg_data.get("modifiers", {})
     cnx_data_extra = cfg_data.get("cnx_data_extra", {})
-    if type_ == "oracle":
+    if uri:
+        cnx_data = uri
+    elif type_ == "oracle":
         server = cfg_data.get("server", getenv("DB_SERVER"))
         port = cfg_data.get("port", getenv("DB_PORT"))
         sid = cfg_data.get("sid", getenv("DB_SID"))

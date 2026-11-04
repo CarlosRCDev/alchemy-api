@@ -42,3 +42,55 @@ def test_show_query_config_wins_over_env_var(monkeypatch):
 def test_show_query_env_var_unset(monkeypatch):
     monkeypatch.delenv("DB_SHOW_QUERY", raising=False)
     assert read_cnx_data({"type": "sqlite", "path": "x.db"})[2] is False
+
+
+def test_uri(monkeypatch):
+    monkeypatch.delenv("DB_URI", raising=False)
+    uri = "postgresql+psycopg://user:pass@localhost:5433/test"
+    assert read_cnx_data({"uri": uri})[0] == uri
+
+
+def test_uri_wins_over_type():
+    uri = "sqlite:///other.db"
+    assert read_cnx_data({"uri": uri, "type": "sqlite", "path": "x.db"})[0] == uri
+
+
+def test_uri_keeps_other_settings():
+    modifiers = {"lower_table": True}
+    cnx_data, cnx_data_extra, show_query, mods, config_log = read_cnx_data({
+        "uri": "sqlite:///x.db",
+        "show_query": True,
+        "modifiers": modifiers,
+        "cnx_data_extra": {"echo": False},
+        "log": {"path": "logdb/x.log", "level_log": "DEBUG", "backup_count": 3},
+    })
+    assert cnx_data == "sqlite:///x.db"
+    assert cnx_data_extra == {"echo": False}
+    assert show_query is True
+    assert mods == modifiers
+    assert config_log == {"level_log": "DEBUG", "log_path": "logdb/x.log", "backup_count": 3}
+
+
+def test_uri_env_var(monkeypatch):
+    monkeypatch.setenv("DB_URI", "sqlite:///env.db")
+    assert read_cnx_data({})[0] == "sqlite:///env.db"
+    # A config with type ignores DB_URI
+    assert read_cnx_data({"type": "sqlite", "path": "x.db"})[0] == "sqlite:///x.db"
+
+
+@pytest.mark.parametrize("uri", ["", "   ", 5, "not a url"])
+def test_uri_not_valid(uri):
+    with pytest.raises(DbException) as exc:
+        read_cnx_data({"uri": uri})
+    assert exc.value.status_code == 400
+    assert "Not valid uri" in str(exc.value)
+
+
+def test_uri_connects(tmp_path):
+    from alchemy_api import Conexion
+    uri = f"sqlite:///{tmp_path / 'uri.db'}"
+    cnx_data, cnx_data_extra, show_query, modifiers, config_log = read_cnx_data({"uri": uri})
+    cnx = Conexion(cnx_data, cnx_data_extra=cnx_data_extra, show_query=show_query,
+                   modifiers=modifiers, config_log=config_log)
+    cnx.exec_sql("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+    assert cnx.exec_sql("SELECT count(*) AS n FROM t", ret=True) == [{"n": 0}]
