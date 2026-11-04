@@ -221,3 +221,9 @@ def test_insert_logs_once_per_group(cnx_cfg, caplog):
         cnx.insert("users", [{"id": 40 + i, "name": "x", "age": i} for i in range(50)])
     inserts = [r.message for r in caplog.records if "INSERT" in r.message]
     assert len(inserts) == 1 and "first of 50 rows" in inserts[0]
+
+
+def test_offset_without_orderby(cnx):
+    # SQL Server needs ORDER BY for OFFSET: the primary key is used when there is no orderby
+    rows = cnx.select("users", offset=1)
+    assert len(rows) == 3

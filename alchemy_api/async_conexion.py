@@ -94,7 +94,7 @@ class AsyncConexion(Conexion):
             statement = self._orderby(statement, _table, orderby)
         
         if offset and not count:
-            statement = self._offset(statement, offset)
+            statement = self._offset(statement, offset, _table)
         
         if limit and not count:
             statement = self._limit(statement, limit)

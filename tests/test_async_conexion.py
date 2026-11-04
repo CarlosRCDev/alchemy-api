@@ -79,3 +79,10 @@ def test_async_insert_many_rows(async_db_cfg):
             return inserted, await cnx.select("users", count=True)
     inserted, count = run(main())
     assert (inserted, list(count.values())) == (300, [304])
+
+
+def test_async_offset_without_orderby(async_db_cfg):
+    async def main():
+        async with _cnx(async_db_cfg) as cnx:
+            return await cnx.select("users", offset=1)
+    assert len(run(main())) == 3

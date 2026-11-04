@@ -2,7 +2,7 @@
 
 Library `sqlalchemy-rest-api` (imported as `alchemy_api`): CRUD with plain dicts plus ready-made
 Flask/FastAPI routes over **existing** databases via SQLAlchemy reflection (no models).
-Supports sqlite, PostgreSQL (psycopg), MariaDB (pymysql/aiomysql) and Oracle (oracledb).
+Supports sqlite, PostgreSQL (psycopg), MariaDB and MySQL (pymysql/aiomysql), SQL Server (pymssql, sync only) and Oracle (oracledb).
 
 ## Commands
 
@@ -17,6 +17,8 @@ uv run pytest tests/test_conexion.py::test_select_all -k config_sqlite
 
 docker compose -f compose-postgres.yaml up -d --wait   # postgres on host port 5433
 docker compose -f compose-mariadb.yaml up -d --wait    # mariadb on 3306
+docker compose -f compose-mysql.yaml up -d --wait      # mysql on host port 3307
+docker compose -f compose-mssql.yaml up -d --wait      # sql server on 1433 (creates db "test")
 docker compose -f compose-oracle.yaml up -d --wait     # oracle on 1521 (heavy, not in CI)
 
 uv run python example/api_fastapi.py      # demo apps, run from the repo root
@@ -59,6 +61,9 @@ backends because the container is down are not code failures.
 - **Oracle**: table/column names come back uppercase; `modifiers` (`lower_table`, `lower_cols`,
   `ret_upper_table`, `ret_upper_cols`) handle that. `limit < 1` means a percentage. Check new
   features against these modifiers.
+- **SQL Server**: `OFFSET` needs `ORDER BY` (`_offset` adds the primary key when there is no
+  orderby) and percent limits use `TOP (:p) PERCENT` (`_limit`). No async driver is tested
+  (aioodbc needs the system ODBC driver), so async tests skip on mssql (`NO_ASYNC_DRIVER`).
 - **Tests**: add tests to the generic files so they run on every backend through the fixtures
   (`cnx`, `cnx_no_raise`, `async_db_cfg`, `db_cfg`, `roles`). Backend-specific tests skip
   themselves (see `tests/test_oracle.py`). The `users` fixture table is recreated per test.
@@ -72,7 +77,7 @@ backends because the container is down are not code failures.
 1. Bump `version` in `pyproject.toml` and run `uv lock` (CI runs `uv run --locked`, so
    `uv.lock` must match).
 2. Commit, then tag `vX.Y.Z` (must equal the pyproject version) and push the tag.
-3. `.github/workflows/publish.yml` runs tests (sqlite/postgres/mariadb), builds and publishes to
+3. `.github/workflows/publish.yml` runs tests (sqlite/postgres/mariadb/mysql/mssql), builds and publishes to
    TestPyPI then PyPI via Trusted Publishing.
 
 Don't push tags or publish without being asked.

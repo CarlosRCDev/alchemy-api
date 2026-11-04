@@ -1,0 +1,20 @@
+# Test database for tests/settings/config_mssql.json
+#   docker compose -f compose-mssql.yaml up -d --wait
+# The image has no variable to create a database, so the healthcheck creates "test"
+# (idempotent) and only reports healthy once it exists
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: mssql-test
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Test_Passw0rd"
+      MSSQL_PID: Developer
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Test_Passw0rd -Q \"IF DB_ID('test') IS NULL CREATE DATABASE test\" -b"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 20s

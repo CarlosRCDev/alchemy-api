@@ -94,3 +94,19 @@ def test_uri_connects(tmp_path):
                    modifiers=modifiers, config_log=config_log)
     cnx.exec_sql("CREATE TABLE t (id INTEGER PRIMARY KEY)")
     assert cnx.exec_sql("SELECT count(*) AS n FROM t", ret=True) == [{"n": 0}]
+
+
+@pytest.mark.parametrize("type_, expected", [
+    ("mariadb", "mariadb+pymysql://u:p@h:1/d?charset=utf8"),
+    ("async_mariadb", "mariadb+aiomysql://u:p@h:1/d?charset=utf8"),
+    ("mysql", "mysql+pymysql://u:p@h:1/d?charset=utf8mb4"),
+    ("async_mysql", "mysql+aiomysql://u:p@h:1/d?charset=utf8mb4"),
+])
+def test_mysql_types(type_, expected):
+    cfg = {"type": type_, "server": "h", "port": 1, "user": "u", "password": "p", "db": "d"}
+    assert read_cnx_data(cfg)[0] == expected
+
+
+def test_mssql_type():
+    cfg = {"type": "mssql", "server": "h", "port": 1433, "user": "u", "password": "p", "db": "d"}
+    assert read_cnx_data(cfg)[0] == "mssql+pymssql://u:p@h:1433/d?charset=utf8"

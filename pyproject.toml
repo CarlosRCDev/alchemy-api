@@ -1,13 +1,13 @@
 [project]
 name = "sqlalchemy-rest-api"
-version = "0.2.0"
+version = "0.2.1"
 description = "CRUD with python dicts and auto REST api (Flask/FastAPI) over existing databases with SQLAlchemy reflection"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Carlos RC" }]
 requires-python = ">=3.12"
-keywords = ["sqlalchemy", "rest", "api", "crud", "flask", "fastapi", "oracle", "reflection"]
+keywords = ["sqlalchemy", "rest", "api", "crud", "flask", "fastapi", "oracle", "mysql", "mariadb", "postgresql", "sqlserver", "reflection"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -44,13 +44,21 @@ mariadb = [
     "pymysql>=1.1.0",
     "aiomysql>=0.3.2",
 ]
+mysql = [
+    "pymysql>=1.1.0",
+    "aiomysql>=0.3.2",
+]
+mssql = [
+    # sync only: wheels include FreeTDS, no system ODBC driver needed
+    "pymssql>=2.3.0",
+]
 postgres = [
     # binary: wheels with libpq included, no system library needed
     "psycopg[binary]>=3.1",
 ]
 # Every extra above; keep in sync when adding a new one
 all = [
-    "sqlalchemy-rest-api[flask,fastapi,async,oracle,mariadb,postgres]",
+    "sqlalchemy-rest-api[flask,fastapi,async,oracle,mariadb,mysql,mssql,postgres]",
 ]
 
 [project.urls]
@@ -77,6 +85,7 @@ dev = [
     "httpx2>=2.16.0",
     "oracledb>=26.1.0",
     "psycopg[binary]>=3.3.6",
+    "pymssql>=2.4.6",
     "pymysql>=1.2.3",
     "pytest>=9.2.0",
     "uvicorn>=0.54.0",

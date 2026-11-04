@@ -26,8 +26,15 @@ Database drivers, each one with its sync and async driver (async also needs `[as
 |---|---|---|
 | `[oracle]` | `oracledb` | `oracle` |
 | `[mariadb]` | `pymysql`, `aiomysql` | `mariadb`, `async_mariadb` |
+| `[mysql]` | `pymysql`, `aiomysql` (same drivers, MySQL dialect, `utf8mb4`) | `mysql`, `async_mysql` |
+| `[mssql]` | `pymssql` (sync only, no system ODBC driver needed) | `mssql` |
 | `[postgres]` | `psycopg[binary]` (no system `libpq` needed) | `psycopg` |
 | none | sqlite is built in (`aiosqlite` comes with `[async]`) | `sqlite` |
+
+SQL Server notes: `select` with `offset` and no `orderby` is ordered by the primary key (SQL Server
+needs `ORDER BY` for `OFFSET`). `AsyncConexion` needs `mssql+aioodbc://` through `uri`
+(`aioodbc` plus Microsoft's ODBC driver on the system); that path is not tested or bundled.
+Use `NVARCHAR` columns for text outside the column collation (e.g. emojis).
 
 ```bash
 pip install "sqlalchemy-rest-api[fastapi,async,postgres]"   # e.g. async FastAPI over PostgreSQL
@@ -42,7 +49,7 @@ from alchemy_api import Conexion
 from alchemy_api.utils import read_cnx_data
 
 config = {
-    "type": "sqlite",  # oracle, mariadb, async_mariadb, psycopg, sqlite
+    "type": "sqlite",  # oracle, mariadb, async_mariadb, mysql, async_mysql, mssql, psycopg, sqlite
     "path": "example.db",
     "show_query": False,
     "log": {"path": "logdb/example.log", "level_log": "DEBUG", "backup_count": 10},
@@ -79,7 +86,7 @@ Instead of `type` and its keys, the settings can give the SQLAlchemy url directl
 ```
 
 The url goes to SQLAlchemy as is, so pick the driver in it (`postgresql+psycopg://`,
-`mariadb+pymysql://`, `oracle+oracledb://`, `sqlite:///path.db`; async drivers for
+`mariadb+pymysql://`, `mysql+pymysql://`, `mssql+pymssql://`, `oracle+oracledb://`, `sqlite:///path.db`; async drivers for
 `AsyncConexion`) and URL-encode special characters in the password (`@` -> `%40`).
 A plain `postgresql://` uses psycopg2, which is not one of the extras.
 

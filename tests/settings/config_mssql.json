@@ -1,0 +1,35 @@
+{
+    "database": {
+        "type": "mssql",
+        "user": "sa",
+        "password": "Test_Passw0rd",
+        "server": "localhost",
+        "port": 1433,
+        "db": "test",
+        "show_query": false,
+        "log": {
+            "path": "tests/logdb/log_mssql.log",
+            "level_log": "INFO",
+            "backup_count": 10
+        }
+    },
+    "roles": {
+        "admin": [
+            "*"
+        ],
+        "editor": [
+            "tables",
+            "schema",
+            "select",
+            "insert",
+            "update",
+            "delete",
+            "log_read"
+        ],
+        "reader": [
+            "tables",
+            "schema",
+            "select"
+        ]
+    }
+}

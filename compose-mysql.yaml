@@ -1,0 +1,19 @@
+# Test database for tests/settings/config_mysql.json
+#   docker compose -f compose-mysql.yaml up -d --wait
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: mysql-test
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+      MYSQL_USER: test
+      MYSQL_PASSWORD: test
+      MYSQL_DATABASE: test
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-utest", "-ptest"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s

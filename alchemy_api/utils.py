@@ -41,6 +41,15 @@ def env_bool(name:str, default:bool=False) -> bool:
     raise ValueError(f"Not valid boolean in env var {name}: {value!r}")
 
 
+# MariaDB/MySQL types: (SQLAlchemy dialect+driver, charset). Same drivers, different dialect
+_MYSQL_TYPES = {
+    "mariadb": ("mariadb+pymysql", "utf8"),
+    "async_mariadb": ("mariadb+aiomysql", "utf8"),
+    "mysql": ("mysql+pymysql", "utf8mb4"),
+    "async_mysql": ("mysql+aiomysql", "utf8mb4"),
+}
+
+
 def _read_uri(cfg_data) -> str | None:
     """SQLAlchemy url given directly: "uri" in the config, else DB_URI when the config has no type"""
     uri = cfg_data.get("uri")
@@ -86,20 +95,21 @@ def read_cnx_data(cfg_data):
                 init_oracle_client()
             _logger.info("Oracle thick mode: %s", not is_thin_mode())
         cnx_data = f"oracle+oracledb://{user}:{password}@{dsn}"
-    elif type_ == "mariadb":
+    elif type_ in _MYSQL_TYPES:
         server = cfg_data.get("server", getenv("DB_SERVER"))
         port = cfg_data.get("port", getenv("DB_PORT"))
         user = cfg_data.get("user", getenv("DB_USER"))
         password = cfg_data.get("password", getenv("DB_PASSWORD"))
         db = cfg_data.get("db", getenv("DB_DB"))
-        cnx_data = f"mariadb+pymysql://{user}:{password}@{server}:{port}/{db}?charset=utf8"
-    elif type_ == "async_mariadb":
+        driver, charset = _MYSQL_TYPES[type_]
+        cnx_data = f"{driver}://{user}:{password}@{server}:{port}/{db}?charset={charset}"
+    elif type_ == "mssql":
         server = cfg_data.get("server", getenv("DB_SERVER"))
         port = cfg_data.get("port", getenv("DB_PORT"))
         user = cfg_data.get("user", getenv("DB_USER"))
         password = cfg_data.get("password", getenv("DB_PASSWORD"))
         db = cfg_data.get("db", getenv("DB_DB"))
-        cnx_data = f"mariadb+aiomysql://{user}:{password}@{server}:{port}/{db}?charset=utf8"    
+        cnx_data = f"mssql+pymssql://{user}:{password}@{server}:{port}/{db}?charset=utf8"
     elif type_ == "sqlite":
         path = cfg_data.get("path", getenv("DB_PATH"))
         cnx_data = f"sqlite:///{path}"

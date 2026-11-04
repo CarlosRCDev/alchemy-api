@@ -7,7 +7,7 @@ import logging
 import logging.handlers
 from pathlib import Path
 
-from sqlalchemy import create_engine, MetaData, Table, Column, desc, func
+from sqlalchemy import create_engine, MetaData, Table, Column, desc, func, text
 from sqlalchemy import inspect as db_inspect
 from sqlalchemy import select as db_select
 from sqlalchemy import insert as db_insert
@@ -216,7 +216,7 @@ class Conexion:
             statement = self._orderby(statement, _table, orderby)
         
         if offset and not count:
-            statement = self._offset(statement, offset)
+            statement = self._offset(statement, offset, _table)
         
         if limit and not count:
             statement = self._limit(statement, limit)
@@ -503,12 +503,22 @@ class Conexion:
     def _colnames(self, columns, result):
         return [dict(zip(columns, row)) for row in result]
     
-    def _offset(self, statement, offset):
+    def _is_mssql(self) -> bool:
+        return self._engine.dialect.name == "mssql"
+
+    def _offset(self, statement, offset, _table=None):
+        # SQL Server only accepts OFFSET after an ORDER BY: without orderby, sort by the
+        # primary key (or the first column) so pages are stable
+        if self._is_mssql() and _table is not None and not statement._order_by_clauses:
+            statement = statement.order_by(*(_table.primary_key.columns or list(_table.columns)[:1]))
         return statement.offset(offset)
     
     def _limit(self, statement, limit):
-        # limit < 1 is a percentage, only for dialects with FETCH ... PERCENT (Oracle)
+        # limit < 1 is a percentage, only for dialects with FETCH ... PERCENT (Oracle) or TOP ... PERCENT
         if limit < 1:
+            if self._is_mssql():
+                # The mssql compiler casts the TOP value to int (0.5 -> TOP 0 PERCENT)
+                return statement.prefix_with(text("TOP (:_top_percent) PERCENT").bindparams(_top_percent=limit))
             return statement.fetch(limit, percent=True)
         return statement.limit(int(limit))
     

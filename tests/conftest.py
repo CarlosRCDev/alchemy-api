@@ -14,7 +14,10 @@ SETTINGS_FILES = sorted(SETTINGS_DIR.glob("*.json"))
 ASYNC_DRIVERS = {
     "sqlite://": "sqlite+aiosqlite://",
     "mariadb+pymysql://": "mariadb+aiomysql://",
+    "mysql+pymysql://": "mysql+aiomysql://",
 }
+
+NO_ASYNC_DRIVER = ("mssql+pymssql://",)
 
 ROWS = [
     {"id": 1, "name": "ana", "age": 30},
@@ -90,7 +93,10 @@ def cnx_cfg(db_cfg):
 @pytest.fixture
 def async_db_cfg(cnx_cfg):
     # oracle+oracledb and postgresql+psycopg work with create_async_engine as they are;
-    # sqlite and mariadb need their async driver
+    # sqlite, mariadb and mysql need their async driver
+    # SQL Server's async driver (aioodbc) needs the system ODBC driver: not tested
+    if cnx_cfg["cnx_data"].startswith(NO_ASYNC_DRIVER):
+        pytest.skip(f"no async driver tested for {cnx_cfg['cnx_data'].split(':')[0]}")
     for sync_prefix, async_prefix in ASYNC_DRIVERS.items():
         if cnx_cfg["cnx_data"].startswith(sync_prefix):
             return {**cnx_cfg, "cnx_data": cnx_cfg["cnx_data"].replace(sync_prefix, async_prefix, 1)}

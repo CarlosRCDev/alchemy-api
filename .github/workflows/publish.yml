@@ -20,7 +20,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Same databases as compose-postgres.yaml and compose-mariadb.yaml (tests/settings)
+    # Same databases as compose-postgres.yaml, compose-mariadb.yaml, compose-mysql.yaml and compose-mssql.yaml (tests/settings)
     services:
       postgres:
         image: postgres:17
@@ -43,6 +43,28 @@ jobs:
         options: >-
           --health-cmd "healthcheck.sh --connect --innodb_initialized"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.4
+        ports: ["3307:3306"]
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_USER: test
+          MYSQL_PASSWORD: test
+          MYSQL_DATABASE: test
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -utest -ptest"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports: ["1433:1433"]
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Test_Passw0rd"
+          MSSQL_PID: Developer
+        # The healthcheck also creates the "test" database (no env var for it)
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Test_Passw0rd -Q \"IF DB_ID('test') IS NULL CREATE DATABASE test\" -b"
+          --health-interval 5s --health-timeout 10s --health-retries 30 --health-start-period 20s
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -55,7 +77,7 @@ jobs:
             exit 1
           fi
 
-      # sqlite, postgres and mariadb; Oracle is too heavy for CI
+      # sqlite, postgres, mariadb, mysql and mssql; Oracle is too heavy for CI
       - name: Tests
         run: uv run --locked pytest -q -k "not config_oracle"
 
