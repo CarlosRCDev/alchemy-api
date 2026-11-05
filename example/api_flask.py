@@ -18,7 +18,7 @@ from flask import Flask
 
 from alchemy_api import Conexion
 from alchemy_api.api_db import api_db, api_log, api_log_delete
-from demo_data import create_demo_table, get_role, load_config, load_roles
+from demo_data import create_demo_table, get_role, load_config, load_permissions
 
 cnx = Conexion(**load_config())
 create_demo_table(cnx)
@@ -28,8 +28,8 @@ app = Flask(__name__)
 app.config["CNX"] = cnx
 # /db/sql is disabled unless this is True
 app.config["DB_ALLOW_RAW_SQL"] = False
-# Permissions from the "roles" section of the settings file (None: no control)
-app.config["DB_ROLES"] = load_roles()
+# Operations and tables per role, "permissions" section of the settings file (None: no control)
+app.config["DB_ROLES"], app.config["DB_TABLES"] = load_permissions()
 app.config["DB_GET_ROLE"] = get_role
 app.register_blueprint(api_db, url_prefix="/db")
 app.register_blueprint(api_log, url_prefix="/log")

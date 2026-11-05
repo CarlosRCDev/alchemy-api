@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, create_engine, insert
 
-from alchemy_api.permissions import read_roles
+from alchemy_api.permissions import read_permissions
 from alchemy_api.utils import read_cnx_data
 
 # Every settings file in tests/settings is a test run: all tests are executed once per file
@@ -50,8 +50,14 @@ def settings(settings_json):
 
 @pytest.fixture
 def roles(settings_json):
-    # {role: allowed operations} from the "roles" section, None if the file has no roles
-    return read_roles(settings_json.get("roles"))
+    # {role: allowed operations} from the "permissions" section, None if the file has no roles
+    return read_permissions(settings_json.get("permissions"))[0]
+
+
+@pytest.fixture
+def tables(settings_json):
+    # {role: allowed tables} from the "permissions" section, None if the file has no table control
+    return read_permissions(settings_json.get("permissions"))[1]
 
 
 @pytest.fixture

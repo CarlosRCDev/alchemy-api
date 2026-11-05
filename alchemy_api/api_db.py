@@ -1,12 +1,12 @@
 from functools import wraps
 
-from flask import Blueprint, jsonify, request, make_response, current_app
+from flask import Blueprint, jsonify, request, make_response, current_app, g
 
-from .permissions import check_permission
+from .permissions import check_permission, check_table, filter_tables
 from .utils import DbException, error
 ### FUNCTIONS ###
-# Connection in app.config["CNX"]. Optional role permissions:
-#   app.config["DB_ROLES"] = read_roles(settings.get("roles"))
+# Connection in app.config["CNX"]. Optional permissions (operations and tables per role):
+#   app.config["DB_ROLES"], app.config["DB_TABLES"] = read_permissions(settings.get("permissions"))
 #   app.config["DB_GET_ROLE"] = get_role  # get_role(request) -> role name or None
 api_db = Blueprint("db", __name__, static_folder="static", template_folder="static")
 api_log = Blueprint("log", __name__, static_folder="static", template_folder="static")
@@ -23,12 +23,19 @@ def require(operation):
         @wraps(func)
         def wrapper(*args, **kwargs):
             roles = current_app.config.get("DB_ROLES")
+            tables = current_app.config.get("DB_TABLES")
             get_role = current_app.config.get("DB_GET_ROLE")
-            role = get_role(request) if roles is not None and get_role else None
-            check_permission(roles, get_role, role, operation)
+            needs_role = roles is not None or tables is not None
+            # Resolved once per request, _check_table reuses it
+            g.db_role = get_role(request) if needs_role and get_role else None
+            check_permission(roles, get_role, g.db_role, operation)
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+def _check_table(table):
+    """Checks the table against app.config["DB_TABLES"]. table=None needs every table (raw SQL)"""
+    check_table(current_app.config.get("DB_TABLES"), current_app.config.get("DB_GET_ROLE"), g.get("db_role"), table)
 
 @api_db.app_errorhandler(Exception)
 def error_handler(err):
@@ -52,6 +59,7 @@ def select(db_data=None):
     table = db_data.pop("table", None)
 
     if not table: raise DbException(error("Not table in post", 400)) from None
+    _check_table(table)
     result_db = current_app.config["CNX"].select(table=table, **db_data)
 
     return jsonify(result_db)
@@ -64,6 +72,7 @@ def insert():
     data = db_data.pop("data", None)
     
     if not table: raise DbException(error("Not table in post", 400)) from None
+    _check_table(table)
     if not data: raise DbException(error("Not data in post", 400)) from None
 
     result_db = current_app.config["CNX"].insert(table=table, data=data)
@@ -78,6 +87,7 @@ def delete():
     filterby = db_data.pop("filterby", None)
     
     if not table: raise DbException(error("Not table in post", 400)) from None
+    _check_table(table)
     if not filterby: raise DbException(error("Not filterby in post", 400)) from None
     result_db = current_app.config["CNX"].delete(table=table, filterby=filterby)
 
@@ -91,6 +101,7 @@ def update():
     data = db_data.pop("data", None)
 
     if not table: raise DbException(error("Not table in post", 400)) from None
+    _check_table(table)
     if not data: raise DbException(error("Not data in post", 400)) from None
     if not db_data.get("filterby"): raise DbException(error("Not filterby in post", 400)) from None
     
@@ -103,7 +114,12 @@ def update():
 def tables():
 
     tables, views = current_app.config["CNX"].tables()
-    
+    # Only what the role can use when there are table permissions
+    allowed = current_app.config.get("DB_TABLES")
+    get_role = current_app.config.get("DB_GET_ROLE")
+    tables = filter_tables(allowed, get_role, g.get("db_role"), tables)
+    views = filter_tables(allowed, get_role, g.get("db_role"), views)
+
     return jsonify(tables=tables, views=views)
 
 @api_db.route('/schema', methods=['POST'])
@@ -113,6 +129,7 @@ def schema():
     table = db_data.get("table", None)
 
     if not table: raise DbException(error("Not data in post", 400)) from None
+    _check_table(table)
     schema = current_app.config["CNX"].schema(table)
 
     return jsonify(schema)
@@ -123,6 +140,8 @@ def sql():
     # Raw SQL is only allowed when the app enables it explicitly
     if not current_app.config.get("DB_ALLOW_RAW_SQL", False):
         raise DbException(error("Endpoint /sql disabled, set DB_ALLOW_RAW_SQL in app config", 403)) from None
+    # Raw SQL can touch any table: only roles with "tables": ["*"]
+    _check_table(None)
     db_data = request.json
     statement = db_data.get("statement", None)
     if not statement: raise DbException(error("Not statement in post", 400)) from None

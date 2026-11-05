@@ -4,7 +4,7 @@ from os import getenv
 from pathlib import Path
 import warnings
 
-from alchemy_api.permissions import read_roles
+from alchemy_api.permissions import read_permissions
 from alchemy_api.utils import DbException, read_cnx_data
 
 # Settings file from the CONFIG_FILE env var, e.g. CONFIG_FILE=tests/settings/config_oracle.json
@@ -33,10 +33,10 @@ def load_config(config_file=CONFIG_FILE):
     }
 
 
-def load_roles(config_file=CONFIG_FILE):
-    """"roles" section of the settings json -> {role: operations}, None without roles"""
+def load_permissions(config_file=CONFIG_FILE):
+    """"permissions" section of the settings json -> (roles, tables), each None without that control"""
     with open(config_file) as f:
-        return read_roles(json.load(f).get("roles"))
+        return read_permissions(json.load(f).get("permissions"))
 
 
 # Demo only: api key -> role. A real app validates a token (JWT, OAuth2, ...) or looks the key up in a store

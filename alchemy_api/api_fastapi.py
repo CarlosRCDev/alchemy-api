@@ -6,7 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, StrictBool
 
-from .permissions import check_permission
+from .permissions import check_permission, check_table, filter_tables
 from .utils import DbException, error
 ### FUNCTIONS ###
 # Equivalent of api_db.py for FastAPI. The connection (Conexion or AsyncConexion)
@@ -19,8 +19,8 @@ from .utils import DbException, error
 #   app.include_router(api_log, prefix="/log")
 #   app.include_router(api_log_delete, prefix="/delete_log")
 #
-# Optional role permissions:
-#   app.state.roles = read_roles(settings.get("roles"))
+# Optional permissions (operations and tables per role):
+#   app.state.roles, app.state.tables = read_permissions(settings.get("permissions"))
 #   app.state.get_role = get_role  # get_role(request) -> role name or None, sync or async
 api_db = APIRouter(tags=["db"])
 api_log = APIRouter(tags=["log"])
@@ -62,10 +62,24 @@ def require(operation):
     """Dependency that checks the role of the request against app.state.roles"""
     async def check(request: Request):
         roles = getattr(request.app.state, "roles", None)
+        tables = getattr(request.app.state, "tables", None)
         get_role = getattr(request.app.state, "get_role", None)
-        role = await _call(get_role, request) if roles is not None and get_role else None
+        needs_role = roles is not None or tables is not None
+        role = await _call(get_role, request) if needs_role and get_role else None
+        # Resolved once per request, _check_table reuses it
+        request.state.db_role = role
         check_permission(roles, get_role, role, operation)
     return Depends(check)
+
+
+def _check_table(request: Request, table: str | None):
+    """Checks the table against app.state.tables. table=None needs every table (raw SQL)"""
+    check_table(
+        getattr(request.app.state, "tables", None),
+        getattr(request.app.state, "get_role", None),
+        getattr(request.state, "db_role", None),
+        table,
+    )
 
 
 class SelectBody(BaseModel):
@@ -107,28 +121,32 @@ class SqlBody(BaseModel):
 
 
 @api_db.post("/select", dependencies=[require("select")])
-async def select(body: SelectBody, cnx=Depends(get_cnx)):
+async def select(body: SelectBody, request: Request, cnx=Depends(get_cnx)):
+    _check_table(request, body.table)
     db_data = body.model_dump(exclude_unset=True)
     table = db_data.pop("table")
     return await _call(cnx.select, table=table, **db_data)
 
 
 @api_db.post("/insert", dependencies=[require("insert")])
-async def insert(body: InsertBody, cnx=Depends(get_cnx)):
+async def insert(body: InsertBody, request: Request, cnx=Depends(get_cnx)):
+    _check_table(request, body.table)
     if not body.data: raise DbException(error("Not data in post", 400)) from None
     result_db = await _call(cnx.insert, table=body.table, data=body.data)
     return {"insert": result_db}
 
 
 @api_db.post("/delete", dependencies=[require("delete")])
-async def delete(body: DeleteBody, cnx=Depends(get_cnx)):
+async def delete(body: DeleteBody, request: Request, cnx=Depends(get_cnx)):
+    _check_table(request, body.table)
     if not body.filterby: raise DbException(error("Not filterby in post", 400)) from None
     result_db = await _call(cnx.delete, table=body.table, filterby=body.filterby)
     return {"delete": result_db}
 
 
 @api_db.post("/update", dependencies=[require("update")])
-async def update(body: UpdateBody, cnx=Depends(get_cnx)):
+async def update(body: UpdateBody, request: Request, cnx=Depends(get_cnx)):
+    _check_table(request, body.table)
     if not body.data: raise DbException(error("Not data in post", 400)) from None
     if not body.filterby: raise DbException(error("Not filterby in post", 400)) from None
     result_db = await _call(cnx.update, table=body.table, data=body.data, filterby=body.filterby)
@@ -136,13 +154,20 @@ async def update(body: UpdateBody, cnx=Depends(get_cnx)):
 
 
 @api_db.get("/tables", dependencies=[require("tables")])
-async def tables(cnx=Depends(get_cnx)):
+async def tables(request: Request, cnx=Depends(get_cnx)):
     tables, views = cnx.tables()
+    # Only what the role can use when there are table permissions
+    allowed = getattr(request.app.state, "tables", None)
+    get_role = getattr(request.app.state, "get_role", None)
+    role = getattr(request.state, "db_role", None)
+    tables = filter_tables(allowed, get_role, role, tables)
+    views = filter_tables(allowed, get_role, role, views)
     return {"tables": tables, "views": views}
 
 
 @api_db.post("/schema", dependencies=[require("schema")])
-async def schema(body: SchemaBody, cnx=Depends(get_cnx)):
+async def schema(body: SchemaBody, request: Request, cnx=Depends(get_cnx)):
+    _check_table(request, body.table)
     return cnx.schema(body.table)
 
 
@@ -151,6 +176,8 @@ async def sql(body: SqlBody, request: Request, cnx=Depends(get_cnx)):
     # Raw SQL is only allowed when the app enables it explicitly
     if not getattr(request.app.state, "allow_raw_sql", False):
         raise DbException(error("Endpoint /sql disabled, set app.state.allow_raw_sql", 403)) from None
+    # Raw SQL can touch any table: only roles with "tables": ["*"]
+    _check_table(request, None)
 
     result_db = await _call(cnx.exec_sql, statement=body.statement, ret=body.ret, bind=body.parameters)
     if body.ret:

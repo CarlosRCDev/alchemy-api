@@ -35,7 +35,7 @@ backends because the container is down are not code failures.
 - `alchemy_api/async_conexion.py` — `AsyncConexion(Conexion)`: same API, `async` methods, built with `await AsyncConexion.create(...)`.
 - `alchemy_api/api_db.py` — Flask blueprints (`api_db`, `api_log`, `api_log_delete`), config in `app.config["CNX"|"DB_ROLES"|"DB_GET_ROLE"|"DB_ALLOW_RAW_SQL"]`.
 - `alchemy_api/api_fastapi.py` — FastAPI routers, config in `app.state.cnx|roles|get_role|allow_raw_sql`; `_call` awaits async methods and runs sync ones in a threadpool.
-- `alchemy_api/permissions.py` — `read_roles` / `check_permission` (role -> allowed operations).
+- `alchemy_api/permissions.py` — `read_permissions` ("permissions" settings -> roles map + tables map), `check_permission` / `check_table`.
 - `alchemy_api/utils.py` — `DbException`, `error` namedtuple, `read_cnx_data` (settings json/env vars -> engine args), `env_bool`.
 - `tests/settings/*.json` — one file per backend; `conftest.py` parametrizes every test with each file.
 - `example/` — runnable Flask/FastAPI/dict demos (`config.json`, `demo_data.py`).

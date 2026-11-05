@@ -152,17 +152,22 @@ app.include_router(api_log_delete, prefix="/delete_log")
 | GET | `/log/reverse/{date}/{n_line}` | last lines first | `log_read` |
 | DELETE | `/delete_log/{date}` | removes an old log | `log_delete` |
 
-### Role permissions
+### Permissions
 
-Roles are defined in the settings json, next to `"database"`. `"*"` allows every operation:
+Permissions are defined per role in the `"permissions"` section of the settings json, next to `"database"`.
+`"roles"` lists the operations of the role (see the table above) and `"tables"` the tables it can use.
+`"*"` allows every operation / every table; table names are compared case insensitive:
 
 ```json
 {
     "database": {"type": "sqlite", "path": "example.db"},
-    "roles": {
-        "admin": ["*"],
-        "editor": ["tables", "schema", "select", "insert", "update", "delete", "log_read"],
-        "reader": ["tables", "schema", "select"]
+    "permissions": {
+        "admin": {"roles": ["*"], "tables": ["*"]},
+        "editor": {
+            "roles": ["tables", "schema", "select", "insert", "update", "delete", "log_read"],
+            "tables": ["users"]
+        },
+        "reader": {"roles": ["tables", "schema", "select"], "tables": ["users", "data"]}
     }
 }
 ```
@@ -171,27 +176,37 @@ The library does not authenticate: the app gives a `get_role(request)` function 
 of the request (from a JWT, an api key, a session...) or `None`.
 
 ```python
-from alchemy_api.permissions import read_roles
+from alchemy_api.permissions import read_permissions
 
-roles = read_roles(settings.get("roles"))  # ValueError on unknown operations
+# ValueError on unknown operations, unknown keys or invalid table lists
+roles, tables = read_permissions(settings.get("permissions"))
 
 def get_role(request):
     return validate_token(request.headers.get("Authorization"))  # "admin", "reader", ... or None
 
 # Flask
 app.config["DB_ROLES"] = roles
+app.config["DB_TABLES"] = tables
 app.config["DB_GET_ROLE"] = get_role
 # FastAPI (get_role can also be async)
 app.state.roles = roles
+app.state.tables = tables
 app.state.get_role = get_role
 ```
 
+`roles` and `tables` are two independent controls: a request needs the operation **and** the table.
+If no role has a `"roles"` key there is no operation control (`roles` is `None`); the same for `"tables"`.
+When a key is used by some role, a role without it gets nothing for that control.
+
 | Situation | Response |
 |---|---|
-| No `roles` configured | everything allowed (no control) |
+| No `permissions` configured | everything allowed (no control) |
 | `get_role` returns `None` | 401 |
 | Role unknown or without the operation | 403 |
-| `roles` configured but no `get_role` | 500 (refused, never open by mistake) |
+| `schema`, `select`, `insert`, `update`, `delete` on a table not listed for the role | 403 |
+| `GET /db/tables` | only the tables and views the role can use |
+| `POST /db/sql` with table control | only roles with `"tables": ["*"]` (raw SQL can touch any table), otherwise 403 |
+| Permissions configured but no `get_role` | 500 (refused, never open by mistake) |
 
 For use without api, `Conexion(..., read_only=True)` refuses `insert`, `update`, `delete` and `exec_sql` (403).
 Without the argument it is read from the `READ_ONLY` environment variable (`true`/`1`/`yes`/`on`, default off);

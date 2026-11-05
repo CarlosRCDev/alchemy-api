@@ -22,7 +22,7 @@ from fastapi.security import APIKeyHeader
 from alchemy_api import Conexion, __version__
 from alchemy_api.api_fastapi import api_db, api_log, api_log_delete, register_exception_handlers
 from alchemy_api.utils import env_bool
-from demo_data import API_KEY_HEADER, create_demo_table, get_role, load_config, load_roles
+from demo_data import API_KEY_HEADER, create_demo_table, get_role, load_config, load_permissions
 
 
 @asynccontextmanager
@@ -33,8 +33,8 @@ async def lifespan(app):
     create_demo_table(app.state.cnx)
     # /db/sql is disabled unless this is True
     app.state.allow_raw_sql = False
-    # Permissions from the "roles" section of the settings file (None: no control)
-    app.state.roles = load_roles()
+    # Operations and tables per role, "permissions" section of the settings file (None: no control)
+    app.state.roles, app.state.tables = load_permissions()
     app.state.get_role = get_role
     yield
     app.state.cnx._engine.dispose()
