@@ -243,7 +243,7 @@ docker build -f deployments/Dockerfile --build-arg EXTRAS= -t sqlalchemy-rest-ap
 An unknown extra makes the build fail.
 
 `deployments/build.sh` builds one image per driver, all of them with async support:
-`all`, `sqlite` (no extra drivers), `postgres`, `mariadb`, `mysql`, `mssql` and `oracle`.
+`all`, `sqlite` (no extra drivers), `postgres`, `mysql` (also valid for MariaDB), `mssql` and `oracle`.
 Each one is tagged `<variant>` and `<version>-<variant>` (`all` also `latest` and `<version>`):
 
 ```bash
@@ -251,6 +251,16 @@ deployments/build.sh                                            # every variant,
 deployments/build.sh postgres sqlite                            # some variants
 IMAGE=user/sqlalchemy-rest-api deployments/build.sh --push      # build and push to Docker Hub (after docker login)
 IMAGE=user/sqlalchemy-rest-api PLATFORMS=linux/amd64,linux/arm64 deployments/build.sh --push  # amd64 + arm64
+```
+
+`deployments/push.sh` only pushes images already built by `build.sh` (same `IMAGE`, `VERSION` and `LATEST`).
+It checks that every tag exists locally before pushing anything:
+
+```bash
+IMAGE=user/sqlalchemy-rest-api deployments/build.sh            # build, check them locally...
+docker login
+IMAGE=user/sqlalchemy-rest-api deployments/push.sh             # ...then push every variant
+IMAGE=user/sqlalchemy-rest-api deployments/push.sh postgres    # or only some
 ```
 
 The `docker` GitHub Actions workflow does the same by hand (Actions > docker > Run workflow) for a
