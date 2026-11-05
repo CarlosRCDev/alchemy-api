@@ -1,0 +1,64 @@
+{
+    // Commands of example/api_fastapi_jwt.py to manage its users database (Terminal > Run Task...)
+    "version": "2.0.0",
+    "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {"CONFIG_FILE": "${workspaceFolder}/example/config_jwt.json"}
+    },
+    "tasks": [
+        {
+            // Tables and default roles admin/editor/reader; run once before "example: api_fastapi_jwt"
+            "label": "jwt: init-users-db",
+            "type": "process",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["example/api_fastapi_jwt.py", "init-users-db"],
+            "problemMatcher": []
+        },
+        {
+            "label": "jwt: add-role",
+            "type": "process",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["example/api_fastapi_jwt.py", "add-role", "${input:jwtRole}", "${input:jwtDescription}"],
+            "problemMatcher": []
+        },
+        {
+            // Asks the password in the terminal (focus: the panel gets the keyboard)
+            "label": "jwt: add-user",
+            "type": "process",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["example/api_fastapi_jwt.py", "add-user", "${input:jwtUser}", "${input:jwtRole}"],
+            "presentation": {"focus": true},
+            "problemMatcher": []
+        },
+        {
+            "label": "jwt: disable-user",
+            "type": "process",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["example/api_fastapi_jwt.py", "disable-user", "${input:jwtUser}"],
+            "problemMatcher": []
+        },
+        {
+            // grant/revoke <role> operation|table <value>
+            "label": "jwt: grant/revoke",
+            "type": "process",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["example/api_fastapi_jwt.py", "${input:jwtGrant}", "${input:jwtRole}", "${input:jwtKind}", "${input:jwtValue}"],
+            "problemMatcher": []
+        },
+        {
+            "label": "jwt: show",
+            "type": "process",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["example/api_fastapi_jwt.py", "show"],
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {"id": "jwtUser", "type": "promptString", "description": "Username"},
+        {"id": "jwtRole", "type": "promptString", "description": "Role (admin, editor, reader or one from add-role)", "default": "reader"},
+        {"id": "jwtDescription", "type": "promptString", "description": "Role description", "default": ""},
+        {"id": "jwtGrant", "type": "pickString", "description": "Action", "options": ["grant", "revoke"], "default": "grant"},
+        {"id": "jwtKind", "type": "pickString", "description": "Permission kind", "options": ["table", "operation"], "default": "table"},
+        {"id": "jwtValue", "type": "promptString", "description": "Table name or operation (tables, schema, select, insert, update, delete, sql, log_read, log_delete, *)", "default": "users"}
+    ]
+}

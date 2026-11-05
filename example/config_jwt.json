@@ -1,0 +1,16 @@
+{
+    "database": {
+        "type": "sqlite",
+        "path": "example/db/example.db",
+        "show_query": false,
+        "log": {
+            "path": "example/logdb/example_jwt.log",
+            "level_log": "INFO",
+            "backup_count": 10
+        }
+    },
+    "users_database": {
+        "type": "sqlite",
+        "path": "example/db/db_users.db"
+    }
+}

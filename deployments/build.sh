@@ -13,6 +13,9 @@
 #   VERSION    version tag prefix (default: version in pyproject.toml)
 #   PLATFORMS  multi architecture build with buildx, only with --push (e.g. linux/amd64,linux/arm64)
 #   LATEST     "false" to not tag "all" as latest, e.g. for an old version (default true)
+#   APP        app served by the image (default deployments/app.py), PACKAGES extra pip packages for it.
+#              Use another IMAGE for them, e.g. JWT authentication:
+#              IMAGE=user/sqlalchemy-rest-api-jwt APP=example/api_fastapi_jwt.py PACKAGES="pyjwt[crypto]>=2.10"
 #
 # Tags of each variant: IMAGE:<variant> and IMAGE:<version>-<variant>.
 # "all" also gets IMAGE:<version> and IMAGE:latest (unless LATEST=false).
@@ -20,6 +23,8 @@ set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/variants.sh"
 PLATFORMS="${PLATFORMS:-}"
+APP="${APP:-deployments/app.py}"
+PACKAGES="${PACKAGES:-}"
 PUSH=false
 
 selected=()
@@ -48,16 +53,18 @@ for variant in "${selected[@]}"; do
     for name in "${names[@]}"; do
         tags+=(-t "$name")
     done
-    echo "==> $variant (EXTRAS=${VARIANTS[$variant]})"
+    echo "==> $variant (EXTRAS=${VARIANTS[$variant]}, APP=$APP)"
     if [[ -n "$PLATFORMS" ]]; then
         docker buildx build --platform "$PLATFORMS" --push \
             -f "$ROOT/deployments/Dockerfile" \
             --build-arg "EXTRAS=${VARIANTS[$variant]}" \
+            --build-arg "APP=$APP" --build-arg "PACKAGES=$PACKAGES" \
             "${tags[@]}" "$ROOT"
     else
         docker build \
             -f "$ROOT/deployments/Dockerfile" \
             --build-arg "EXTRAS=${VARIANTS[$variant]}" \
+            --build-arg "APP=$APP" --build-arg "PACKAGES=$PACKAGES" \
             "${tags[@]}" "$ROOT"
         if $PUSH; then
             "$ROOT/deployments/push.sh" "$variant"

@@ -85,6 +85,7 @@ dev = [
     "httpx2>=2.16.0",
     "oracledb>=26.1.0",
     "psycopg[binary]>=3.3.6",
+    "pyjwt>=2.15.1",
     "pymssql>=2.4.6",
     "pymysql>=1.2.3",
     "pytest>=9.2.0",

@@ -267,7 +267,19 @@ The `docker` GitHub Actions workflow does the same by hand (Actions > docker > R
 version already published on PyPI: it builds the tag `v<version>` for amd64 and arm64 and pushes it to Docker Hub.
 It needs the repository variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN`.
 
-With compose the same value is read from the `EXTRAS` environment variable:
+The image can serve another app with `APP` (a file of the repository) and the packages it needs with `PACKAGES`,
+e.g. the JWT example instead of `deployments/app.py` (`build.sh` reads the same variables):
+
+```bash
+docker build -f deployments/Dockerfile --build-arg APP=example/api_fastapi_jwt.py \
+  --build-arg PACKAGES="pyjwt[crypto]>=2.10" -t sqlalchemy-rest-api:jwt .
+docker run -d -p 8000:8000 -v $PWD/config.json:/app/config/config.json:ro \
+  -e JWT_JWKS_URL=https://idp.example.com/realms/x/protocol/openid-connect/certs \
+  -e JWT_ISSUER=https://idp.example.com/realms/x -e JWT_AUDIENCE=api -e JWT_ROLE_CLAIM=realm_access.roles \
+  sqlalchemy-rest-api:jwt
+```
+
+With compose, the `EXTRAS` build argument is read from the environment variable of the same name:
 
 ```bash
 EXTRAS=postgres,async API_KEYS="admin-secret=admin" docker compose -f deployments/compose.yaml up -d --build
@@ -298,6 +310,16 @@ Without `"permissions"` every request has full access.
 ## Examples
 
 See the [example](https://github.com/CarlosRCDev/alchemy-api/tree/main/example) folder: Flask, FastAPI and plain dict usage.
+`example/api_fastapi_jwt.py` is a self contained app with JWT authentication (PyJWT) instead of the demo
+`X-API-Key` header, without changing the library. It uses the library twice: one `Conexion` for the data
+(`"database"`, served by `/db/...`) and another one for a users database (`"users_database"`, default sqlite
+`db/db_users.db`, never exposed) with the roles (`api_roles`), the users and their password hashes (`api_users`)
+and the operations and tables of each role (`api_role_operations`, `api_role_tables`). Its settings file
+(`example/config_jwt.json`) only has the databases: a `"permissions"` section is refused.
+Every request needs a valid token; disabling a user, changing its role or its permissions applies at once.
+Tokens come from its own login (`JWT_SECRET`, `POST /auth/token`) or from an identity provider
+(`JWT_JWKS_URL`, `JWT_PUBLIC_KEY`). The users database is managed with its commands (`init-users-db`,
+`add-role`, `delete-role`, `add-user`, `disable-user`, `grant`, `revoke`, `show`); see the docstring of the file.
 
 ## License
 

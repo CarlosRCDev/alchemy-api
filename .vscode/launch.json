@@ -12,6 +12,27 @@
             "envFile": "${workspaceFolder}/.env",
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            // JWT api, users and permissions in example/db/db_users.db (run the task "jwt: init-users-db" once first).
+            // Docs: http://127.0.0.1:8000/docs, token from POST /auth/token
+            "name": "example: api_fastapi_jwt",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "program": "${workspaceFolder}/example/api_fastapi_jwt.py",
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                // env wins over envFile: always the JWT example settings
+                "CONFIG_FILE": "${workspaceFolder}/example/config_jwt.json",
+                // Local development only, never a real secret here
+                "JWT_SECRET": "dev-only-secret-change-me-0123456789abcdef",
+                "JWT_ISSUER": "local-dev",
+                "PERMISSIONS_TTL": "5"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }

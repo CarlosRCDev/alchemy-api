@@ -6,4 +6,5 @@
 !LICENSE
 !alchemy_api/
 !deployments/app.py
+!example/api_fastapi_jwt.py
 **/__pycache__
