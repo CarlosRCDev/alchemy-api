@@ -1,6 +1,6 @@
 # Release on tag push: tests -> build -> TestPyPI -> PyPI
 #
-#   git tag -a v0.1.5 -m "Release 0.1.5" && git push origin v0.1.5    (or ./publish.sh tag)
+#   ./release.sh    (checks, then creates and pushes the tag v<pyproject version>)
 #
 # No tokens: PyPI/TestPyPI "Trusted Publishing" (OIDC). One time setup in both sites:
 #   Project > Publishing > Add GitHub publisher

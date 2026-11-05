@@ -76,7 +76,9 @@ backends because the container is down are not code failures.
 
 1. Bump `version` in `pyproject.toml` and run `uv lock` (CI runs `uv run --locked`, so
    `uv.lock` must match).
-2. Commit, then tag `vX.Y.Z` (must equal the pyproject version) and push the tag.
+2. Commit and push to main, then run `./release.sh`: it checks (clean tree, HEAD = origin/main, tag and
+   PyPI version free, tests) and pushes the tag `vX.Y.Z`. Do not publish from the local machine
+   (`publish.sh` uploads directly and makes the pipeline fail with "File already exists").
 3. `.github/workflows/publish.yml` runs tests (sqlite/postgres/mariadb/mysql/mssql), builds and publishes to
    TestPyPI then PyPI via Trusted Publishing.
 
