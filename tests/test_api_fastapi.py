@@ -117,7 +117,7 @@ def test_logs(cnx_cfg):
         assert today in client.get("/log").json()
         lines = client.get(f"/log/order/{today}").json()
         assert "Start Application" in lines[0]
-        # Last line first, whatever the log level of the settings file (queries only with DEBUG/show_query)
+        # Last line first, whatever the log level of the settings file (queries only with DEBUG)
         reverse = client.get(f"/log/reverse/{today}/1").json()
         assert reverse == [lines[-1].rstrip("\n")]
         assert client.get("/log/reverse/2000-01-01").status_code == 404

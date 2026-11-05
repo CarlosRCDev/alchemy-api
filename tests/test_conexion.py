@@ -149,14 +149,25 @@ def test_lower_cols_modifier(cnx_cfg):
     assert rows == [{"NAME": "ana"}]
 
 
-def test_show_query_does_not_break(cnx_cfg, caplog):
+def test_show_query_prints_to_console(cnx_cfg, capsys):
     from alchemy_api import Conexion
-    # Without config_log: the file logger does not propagate, so caplog would not see it
-    cnx = Conexion(**{**cnx_cfg, "config_log": None}, show_query=True)
-    with caplog.at_level("INFO"):
-        cnx.select("users", filterby={"id": 1})
-        cnx.insert("users", {"id": 20, "name": "x", "age": 1})
-    assert any("SELECT" in r.message for r in caplog.records)
+    cnx = Conexion(**cnx_cfg, show_query=True)
+    cnx.select("users", filterby={"id": 1})
+    cnx.insert("users", {"id": 20, "name": "x", "age": 1})
+    out = capsys.readouterr().out
+    assert "SELECT" in out and "INSERT" in out
+
+
+def test_queries_in_file_log_only_with_debug(tmp_path, capsys):
+    from alchemy_api import Conexion
+    for level, logged in (("INFO", False), ("DEBUG", True)):
+        log_path = tmp_path / f"{level}.log"
+        cnx = Conexion(f"sqlite:///{tmp_path / 'q.db'}", config_log={"log_path": log_path, "level_log": level})
+        cnx.exec_sql("SELECT 1")
+        cnx.logger.handlers[0].flush()
+        assert ("SELECT 1" in log_path.read_text()) is logged
+    # Without show_query nothing goes to the console
+    assert capsys.readouterr().out == ""
 
 
 @pytest.mark.parametrize("log_name, rotated_name", [
@@ -214,12 +225,11 @@ def test_insert_is_atomic(cnx):
     assert cnx.select("users", filterby={"id": 30}) == []
 
 
-def test_insert_logs_once_per_group(cnx_cfg, caplog):
+def test_insert_logs_once_per_group(cnx_cfg, capsys):
     from alchemy_api import Conexion
     cnx = Conexion(**{**cnx_cfg, "config_log": None}, show_query=True)
-    with caplog.at_level("INFO"):
-        cnx.insert("users", [{"id": 40 + i, "name": "x", "age": i} for i in range(50)])
-    inserts = [r.message for r in caplog.records if "INSERT" in r.message]
+    cnx.insert("users", [{"id": 40 + i, "name": "x", "age": i} for i in range(50)])
+    inserts = [line for line in capsys.readouterr().out.splitlines() if "INSERT" in line]
     assert len(inserts) == 1 and "first of 50 rows" in inserts[0]
 
 

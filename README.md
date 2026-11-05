@@ -71,6 +71,10 @@ cnx.exec_sql("SELECT name FROM users WHERE age = :age", ret=True, bind={"age": 2
 
 A plain SQLAlchemy url also works: `Conexion("sqlite:///example.db")`.
 
+`show_query` (or the `DB_SHOW_QUERY` environment variable) prints every executed statement to the console
+(stdout, e.g. `docker logs`). The `log` file only gets the statements with `"level_log": "DEBUG"`;
+with `INFO` it only has the start line and the errors.
+
 Instead of `type` and its keys, the settings can give the SQLAlchemy url directly with `uri`
 (or the `DB_URI` environment variable when the settings have neither `uri` nor `type`).
 `uri` wins over `type`; `show_query`, `modifiers`, `cnx_data_extra` and `log` work the same:

@@ -542,9 +542,10 @@ class Conexion:
                 # Bulk insert: the first row is logged, not every row
                 log_query = f"{log_query} -- first of {n_rows} rows"
             if self.show_query:
-                self._logger.info(log_query)
-            else:
-                self._logger.debug(log_query)
+                # Console (docker logs), independent of the file log: its logger does not propagate
+                print(log_query, flush=True)
+            # File log (or the "alchemy_api.conexion" logger without "log"), only with DEBUG
+            self._logger.debug(log_query)
     
     def _to_datetime(self, col_v):
         return datetime.strptime(col_v["value"], col_v["dt_format"])
