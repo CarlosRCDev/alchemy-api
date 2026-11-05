@@ -1,0 +1,44 @@
+# JWT api: published image, with example/api_fastapi_jwt.py mounted as /app/app.py (no build).
+# The image needs PyJWT (extra jwt): images built by build.sh from version 0.3.1 on (0.3.0 does not have it).
+# Run from the repository root:
+#   cp deployments/config_jwt.example.json deployments/config_jwt.json   # edit it (no "permissions" section)
+#   docker compose -f deployments/compose-jwt.yaml run --rm api python app.py init-users-db
+#   docker compose -f deployments/compose-jwt.yaml run --rm api python app.py add-user marta reader
+#   docker compose -f deployments/compose-jwt.yaml run --rm api python app.py grant reader table users
+#   JWT_SECRET="$(openssl rand -hex 32)" JWT_ISSUER=local docker compose -f deployments/compose-jwt.yaml up -d
+# Tokens from an identity provider instead of local login (POST /auth/token):
+#   JWT_JWKS_URL=https://idp/.../certs JWT_ISSUER=https://idp/... JWT_AUDIENCE=api JWT_ROLE_CLAIM=realm_access.roles \
+#       docker compose -f deployments/compose-jwt.yaml up -d
+# Another image or variant: IMAGE=... TAG=postgres docker compose -f deployments/compose-jwt.yaml up -d
+# The api does not start without exactly one of JWT_SECRET, JWT_JWKS_URL or JWT_PUBLIC_KEY.
+# JWT_* variables without a value are passed only when set in the shell (the app defaults apply otherwise).
+services:
+  api:
+    image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:-latest}
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_ALLOW_RAW_SQL=${DB_ALLOW_RAW_SQL:-false}
+      - READ_ONLY=${READ_ONLY:-false}
+      - PERMISSIONS_TTL=${PERMISSIONS_TTL:-30}
+      - JWT_SECRET
+      - JWT_JWKS_URL
+      - JWT_PUBLIC_KEY
+      - JWT_ALGORITHMS
+      - JWT_ISSUER
+      - JWT_AUDIENCE
+      - JWT_ROLE_CLAIM
+      - JWT_LEEWAY
+      - JWT_MINUTES
+    volumes:
+      # Replaces deployments/app.py of the image (the image runs "uvicorn app:app")
+      - ../example/api_fastapi_jwt.py:/app/app.py:ro
+      - ./config_jwt.json:/app/config/config.json:ro
+      # Data and users sqlite databases (paths of config_jwt.json)
+      - api-jwt-db:/app/db
+      - api-jwt-log:/app/logdb
+    restart: unless-stopped
+
+volumes:
+  api-jwt-db:
+  api-jwt-log:

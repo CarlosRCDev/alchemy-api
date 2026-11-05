@@ -2,13 +2,13 @@
 
 # variant -> EXTRAS build arg
 declare -A VARIANTS=(
-    [all]="async,postgres,mariadb,mysql,mssql,oracle"
-    [sqlite]="async"
-    [postgres]="async,postgres"
+    [all]="async,postgres,mariadb,mysql,mssql,oracle,jwt"
+    [sqlite]="async,jwt"
+    [postgres]="async,postgres,jwt"
     # [mariadb]="async,mariadb"
-    [mysql]="async,mysql"
-    [mssql]="async,mssql"
-    [oracle]="async,oracle"
+    [mysql]="async,mysql,jwt"
+    [mssql]="async,mssql,jwt"
+    [oracle]="async,oracle,jwt"
 )
 # ORDER=(all sqlite postgres mariadb mysql mssql oracle)
 ORDER=(all sqlite postgres mysql mssql oracle)

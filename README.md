@@ -282,6 +282,17 @@ docker run -d -p 8000:8000 -v $PWD/config.json:/app/config/config.json:ro \
   sqlalchemy-rest-api:jwt
 ```
 
+The published images (from 0.3.1, `build.sh` adds `jwt` to every variant) already have PyJWT, so the JWT
+example can also run without building: `deployments/compose-jwt.yaml` mounts `example/api_fastapi_jwt.py`
+as `/app/app.py` (settings in `deployments/config_jwt.json`, copied from `deployments/config_jwt.example.json`;
+users database in the `/app/db` volume). The management commands run in the same container:
+
+```bash
+docker compose -f deployments/compose-jwt.yaml run --rm api python app.py init-users-db
+docker compose -f deployments/compose-jwt.yaml run --rm api python app.py add-user marta reader
+JWT_SECRET="$(openssl rand -hex 32)" JWT_ISSUER=local docker compose -f deployments/compose-jwt.yaml up -d
+```
+
 With compose, the `EXTRAS` build argument is read from the environment variable of the same name:
 
 ```bash

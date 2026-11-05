@@ -1,0 +1,16 @@
+{
+    "database": {
+        "type": "sqlite",
+        "path": "/app/db/data.db",
+        "show_query": false,
+        "log": {
+            "path": "/app/logdb/api.log",
+            "level_log": "INFO",
+            "backup_count": 10
+        }
+    },
+    "users_database": {
+        "type": "sqlite",
+        "path": "/app/db/db_users.db"
+    }
+}

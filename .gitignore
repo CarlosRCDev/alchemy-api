@@ -22,3 +22,4 @@ example/logdb/
 
 # Deployment settings (may hold credentials); the example is versioned
 deployments/config.json
+deployments/config_jwt.json
