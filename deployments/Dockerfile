@@ -4,9 +4,10 @@
 #   docker build -f deployments/Dockerfile -t sqlalchemy-rest-api .
 # Only some drivers (extras of pyproject.toml, comma separated; fastapi is always added):
 #   docker build -f deployments/Dockerfile --build-arg EXTRAS=postgres,async -t sqlalchemy-rest-api .
-# Other app (any file of the context with a FastAPI "app") and the packages it needs, e.g. JWT authentication:
+# Other app (any file of the context with a FastAPI "app") and the extras it needs, e.g. JWT authentication:
 #   docker build -f deployments/Dockerfile --build-arg APP=example/api_fastapi_jwt.py \
-#       --build-arg PACKAGES="pyjwt[crypto]>=2.10" -t sqlalchemy-rest-api:jwt .
+#       --build-arg EXTRAS=async,postgres,jwt -t sqlalchemy-rest-api:jwt .
+# PACKAGES: pip packages that are not an extra of pyproject.toml (not pinned by uv.lock)
 ARG PYTHON_VERSION=3.12
 
 FROM python:${PYTHON_VERSION}-slim AS build

@@ -56,9 +56,13 @@ postgres = [
     # binary: wheels with libpq included, no system library needed
     "psycopg[binary]>=3.1",
 ]
+# JWT authentication for example/api_fastapi_jwt.py (crypto: RS256 keys from an identity provider)
+jwt = [
+    "pyjwt[crypto]>=2.10",
+]
 # Every extra above; keep in sync when adding a new one
 all = [
-    "sqlalchemy-rest-api[flask,fastapi,async,oracle,mariadb,mysql,mssql,postgres]",
+    "sqlalchemy-rest-api[flask,fastapi,async,oracle,mariadb,mysql,mssql,postgres,jwt]",
 ]
 
 [project.urls]

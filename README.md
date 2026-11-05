@@ -17,7 +17,8 @@ pip install sqlalchemy-rest-api            # core
 pip install "sqlalchemy-rest-api[flask]"   # + Flask api
 pip install "sqlalchemy-rest-api[fastapi]" # + FastAPI api and uvicorn server
 pip install "sqlalchemy-rest-api[async]"   # + AsyncConexion (includes aiosqlite for async sqlite)
-pip install "sqlalchemy-rest-api[all]"     # everything: apis, async and all database drivers
+pip install "sqlalchemy-rest-api[jwt]"     # + PyJWT for the JWT authentication example
+pip install "sqlalchemy-rest-api[all]"     # everything: apis, async, JWT and all database drivers
 ```
 
 Database drivers, each one with its sync and async driver (async also needs `[async]`):
@@ -239,6 +240,7 @@ docker build -f deployments/Dockerfile --build-arg EXTRAS= -t sqlalchemy-rest-ap
 | `mssql` | SQL Server |
 | `oracle` | Oracle |
 | `async` | async drivers support (greenlet, aiosqlite) |
+| `jwt` | PyJWT with crypto, for `example/api_fastapi_jwt.py` (not a database driver) |
 
 An unknown extra makes the build fail.
 
@@ -267,12 +269,13 @@ The `docker` GitHub Actions workflow does the same by hand (Actions > docker > R
 version already published on PyPI: it builds the tag `v<version>` for amd64 and arm64 and pushes it to Docker Hub.
 It needs the repository variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN`.
 
-The image can serve another app with `APP` (a file of the repository) and the packages it needs with `PACKAGES`,
-e.g. the JWT example instead of `deployments/app.py` (`build.sh` reads the same variables):
+The image can serve another app with `APP` (a file of the repository), adding the extras it needs to `EXTRAS`,
+e.g. the JWT example (extra `jwt`) instead of `deployments/app.py`. With `build.sh`: `APP=... ADD_EXTRAS=jwt`
+adds it to every variant. `PACKAGES` installs pip packages that are not extras (not pinned by `uv.lock`):
 
 ```bash
 docker build -f deployments/Dockerfile --build-arg APP=example/api_fastapi_jwt.py \
-  --build-arg PACKAGES="pyjwt[crypto]>=2.10" -t sqlalchemy-rest-api:jwt .
+  --build-arg EXTRAS=async,postgres,jwt -t sqlalchemy-rest-api:jwt .
 docker run -d -p 8000:8000 -v $PWD/config.json:/app/config/config.json:ro \
   -e JWT_JWKS_URL=https://idp.example.com/realms/x/protocol/openid-connect/certs \
   -e JWT_ISSUER=https://idp.example.com/realms/x -e JWT_AUDIENCE=api -e JWT_ROLE_CLAIM=realm_access.roles \

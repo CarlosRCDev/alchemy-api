@@ -39,8 +39,8 @@ Environment variables:
   Token validation, exactly one key source (the api does not start without one):
     JWT_SECRET         shared secret (HS256, >= 32 chars): local login with POST /auth/token against api_users
     JWT_JWKS_URL       identity provider keys (Keycloak, Auth0, Azure AD...): role from the token claim,
-                       permissions of that role from the users database. Needs pyjwt[crypto]
-    JWT_PUBLIC_KEY     PEM public key (or JWT_PUBLIC_KEY_FILE), same as JWKS. Needs pyjwt[crypto]
+                       permissions of that role from the users database
+    JWT_PUBLIC_KEY     PEM public key (or JWT_PUBLIC_KEY_FILE), same as JWKS
     JWT_ALGORITHMS     accepted algorithms (default HS256 with a secret, RS256 otherwise)
     JWT_ISSUER, JWT_AUDIENCE   required "iss" / "aud" (recommended)
     JWT_ROLE_CLAIM     claim with the role for provider tokens, dotted path (default "role"); a list
@@ -55,7 +55,8 @@ Run locally from the project root:
     TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/token -H "Content-Type: application/json" \\
             -d '{"username": "marta", "password": "..."}' | python -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
     curl http://127.0.0.1:8000/db/tables -H "Authorization: Bearer $TOKEN"
-Docker image with this app instead of deployments/app.py: see deployments/Dockerfile (APP, PACKAGES).
+Needs the [jwt] extra: pip install "sqlalchemy-rest-api[fastapi,jwt]" (PyJWT with crypto for RS256).
+Docker image with this app instead of deployments/app.py: see deployments/Dockerfile (APP, EXTRAS=...,jwt).
 """
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
