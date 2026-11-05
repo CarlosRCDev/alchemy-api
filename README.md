@@ -213,6 +213,78 @@ Without the argument it is read from the `READ_ONLY` environment variable (`true
 an explicit `read_only=True/False` wins over the variable.
 For real protection also give read only roles a database user with only `SELECT` grants.
 
+## Docker
+
+The `deployments/` folder has an image that serves the REST api (FastAPI + uvicorn).
+Build it from the repository root:
+
+```bash
+docker build -f deployments/Dockerfile -t sqlalchemy-rest-api .
+```
+
+By default it includes every database driver. To include only some of them, pass the
+extras of `pyproject.toml` (comma separated) with `EXTRAS`; `fastapi` is always added:
+
+```bash
+# Only PostgreSQL (sync and async)
+docker build -f deployments/Dockerfile --build-arg EXTRAS=postgres,async -t sqlalchemy-rest-api:postgres .
+# Only sqlite (built in Python): no extra drivers
+docker build -f deployments/Dockerfile --build-arg EXTRAS= -t sqlalchemy-rest-api:sqlite .
+```
+
+| Extra | Database |
+|---|---|
+| `postgres` | PostgreSQL |
+| `mariadb` / `mysql` | MariaDB / MySQL |
+| `mssql` | SQL Server |
+| `oracle` | Oracle |
+| `async` | async drivers support (greenlet, aiosqlite) |
+
+An unknown extra makes the build fail.
+
+`deployments/build.sh` builds one image per driver, all of them with async support:
+`all`, `sqlite` (no extra drivers), `postgres`, `mariadb`, `mysql`, `mssql` and `oracle`.
+Each one is tagged `<variant>` and `<version>-<variant>` (`all` also `latest` and `<version>`):
+
+```bash
+deployments/build.sh                                            # every variant, local only
+deployments/build.sh postgres sqlite                            # some variants
+IMAGE=user/sqlalchemy-rest-api deployments/build.sh --push      # build and push to Docker Hub (after docker login)
+IMAGE=user/sqlalchemy-rest-api PLATFORMS=linux/amd64,linux/arm64 deployments/build.sh --push  # amd64 + arm64
+```
+
+The `docker` GitHub Actions workflow does the same by hand (Actions > docker > Run workflow) for a
+version already published on PyPI: it builds the tag `v<version>` for amd64 and arm64 and pushes it to Docker Hub.
+It needs the repository variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN`.
+
+With compose the same value is read from the `EXTRAS` environment variable:
+
+```bash
+EXTRAS=postgres,async API_KEYS="admin-secret=admin" docker compose -f deployments/compose.yaml up -d --build
+```
+
+Run it with a settings file (`"database"` and `"permissions"`, see `deployments/config.example.json`)
+mounted in `/app/config/config.json`:
+
+```bash
+docker run -d -p 8000:8000 \
+  -v $PWD/config.json:/app/config/config.json:ro \
+  -e API_KEYS="admin-secret=admin,reader-secret=reader" \
+  sqlalchemy-rest-api
+```
+
+| Variable | Default | |
+|---|---|---|
+| `CONFIG_FILE` | `/app/config/config.json` | settings json; without it the connection comes from `DB_URI` or `DB_TYPE`, `DB_SERVER`... |
+| `API_KEYS` | | `key=role` pairs, comma separated, sent in the `X-API-Key` header |
+| `API_KEY_HEADER` | `X-API-Key` | header with the api key |
+| `DB_ALLOW_RAW_SQL` | `false` | enables `POST /db/sql` |
+| `READ_ONLY` | `false` | refuses insert/update/delete/sql |
+| `SWAGGER_AUTH` | `false` | "Authorize" button in `/docs` |
+
+With `"permissions"` configured and `API_KEYS` empty every request is refused (401).
+Without `"permissions"` every request has full access.
+
 ## Examples
 
 See the [example](https://github.com/CarlosRCDev/alchemy-api/tree/main/example) folder: Flask, FastAPI and plain dict usage.

@@ -1,0 +1,101 @@
+# Docker images to Docker Hub, run by hand (Actions > docker > Run workflow) for a version already on PyPI.
+# Builds the git tag v<version> with deployments/build.sh: one image per driver
+# (all, sqlite, postgres, mariadb, mysql, mssql, oracle), tags <variant> and <version>-<variant>.
+#
+# One time setup in GitHub > Settings > Secrets and variables > Actions:
+#   Variable DOCKERHUB_USERNAME: Docker Hub user (the image is <user>/sqlalchemy-rest-api)
+#   Secret   DOCKERHUB_TOKEN:    Docker Hub personal access token with Read & Write
+# The tag must contain deployments/ (versions released after the Docker support was added).
+name: docker
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version published on PyPI, without v (e.g. 0.2.4)"
+        required: true
+        type: string
+      variants:
+        description: "Variants separated by spaces, empty = all of them"
+        required: false
+        default: ""
+        type: string
+      platforms:
+        description: "Architectures"
+        required: false
+        default: "linux/amd64,linux/arm64"
+        type: string
+      latest:
+        description: "Tag the all variant as latest (uncheck for an old version)"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    env:
+      # Inputs through env, never interpolated in the scripts
+      VERSION: ${{ inputs.version }}
+      VARIANTS: ${{ inputs.variants }}
+      PLATFORMS: ${{ inputs.platforms }}
+      LATEST: ${{ inputs.latest }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/sqlalchemy-rest-api
+    steps:
+      - name: Check inputs and PyPI
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-]?[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Not valid version: $VERSION"
+            exit 1
+          fi
+          if [[ -z "$DOCKERHUB_USERNAME" ]]; then
+            echo "::error::Set the DOCKERHUB_USERNAME repository variable"
+            exit 1
+          fi
+          status="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/sqlalchemy-rest-api/$VERSION/json")"
+          if [[ "$status" != 200 ]]; then
+            echo "::error::Version $VERSION is not on PyPI (HTTP $status)"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Tag matches pyproject version and has deployments
+        run: |
+          pyproject="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)"
+          if [[ "$pyproject" != "$VERSION" ]]; then
+            echo "::error::Tag v$VERSION has pyproject version $pyproject"
+            exit 1
+          fi
+          if [[ ! -f deployments/build.sh ]]; then
+            echo "::error::Tag v$VERSION has no deployments/build.sh (Docker support came in a later version)"
+            exit 1
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        # VARIANTS unquoted on purpose: one argument per variant (build.sh rejects unknown names)
+        run: bash deployments/build.sh --push $VARIANTS
+
+      - name: Summary
+        run: |
+          echo "### Docker images $IMAGE ($VERSION)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Variants: ${VARIANTS:-all}, platforms: $PLATFORMS, latest: $LATEST" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://hub.docker.com/r/$IMAGE/tags" >> "$GITHUB_STEP_SUMMARY"

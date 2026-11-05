@@ -1,0 +1,9 @@
+# Used by "docker build -f deployments/Dockerfile ." (BuildKit): only what the image needs
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!alchemy_api/
+!deployments/app.py
+**/__pycache__

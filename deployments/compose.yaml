@@ -1,0 +1,29 @@
+# Run from the repository root:
+#   cp deployments/config.example.json deployments/config.json   # edit it
+#   API_KEYS="admin-secret=admin,reader-secret=reader" docker compose -f deployments/compose.yaml up -d --build
+# Only some drivers in the image (fastapi is always included):
+#   EXTRAS=postgres,async docker compose -f deployments/compose.yaml up -d --build
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        EXTRAS: ${EXTRAS:-async,oracle,mariadb,mysql,mssql,postgres}
+    image: ${IMAGE:-sqlalchemy-rest-api}:${TAG:-latest}
+    ports:
+      - "8000:8000"
+    environment:
+      API_KEYS: ${API_KEYS:-}
+      DB_ALLOW_RAW_SQL: ${DB_ALLOW_RAW_SQL:-false}
+      READ_ONLY: ${READ_ONLY:-false}
+      SWAGGER_AUTH: ${SWAGGER_AUTH:-true}
+    volumes:
+      - ./config.json:/app/config/config.json:ro
+      - api-db:/app/db
+      - api-log:/app/logdb
+    restart: unless-stopped
+
+volumes:
+  api-db:
+  api-log:

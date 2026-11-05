@@ -1,0 +1,22 @@
+{
+    "database": {
+        "type": "sqlite",
+        "path": "/app/db/data.db",
+        "show_query": false,
+        "log": {
+            "path": "/app/logdb/api.log",
+            "level_log": "INFO",
+            "backup_count": 10
+        }
+    },
+    "permissions": {
+        "admin": {
+            "roles": ["*"],
+            "tables": ["*"]
+        },
+        "reader": {
+            "roles": ["tables", "schema", "select"],
+            "tables": ["users"]
+        }
+    }
+}

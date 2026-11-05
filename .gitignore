@@ -19,3 +19,6 @@ logdb/
 tests/db/
 example/db/
 example/logdb/
+
+# Deployment settings (may hold credentials); the example is versioned
+deployments/config.json
