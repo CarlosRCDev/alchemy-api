@@ -103,7 +103,17 @@ jobs:
           name: dist
           path: dist/
       - uses: astral-sh/setup-uv@v6
-      - run: uv publish --trusted-publishing always --publish-url https://test.pypi.org/legacy/
+      # TestPyPI is only a rehearsal and never accepts a file name twice: if the version is already
+      # there (an earlier run or a manual upload) it is skipped with a warning instead of failing
+      - name: Publish to TestPyPI
+        run: |
+          VERSION="$(ls dist/*.tar.gz | sed -E 's/.*-([^-]+)\.tar\.gz$/\1/')"
+          status="$(curl -s -o /dev/null -w '%{http_code}' "https://test.pypi.org/pypi/sqlalchemy-rest-api/$VERSION/json")"
+          if [ "$status" = 200 ]; then
+            echo "::warning::Version $VERSION already on TestPyPI, not uploaded again"
+            exit 0
+          fi
+          uv publish --trusted-publishing always --publish-url https://test.pypi.org/legacy/
 
   pypi:
     needs: testpypi
@@ -119,4 +129,6 @@ jobs:
           name: dist
           path: dist/
       - uses: astral-sh/setup-uv@v6
-      - run: uv publish --trusted-publishing always
+      # --check-url: files already on PyPI with the same content are skipped (re-running the job is safe);
+      # a different file with the same name still fails
+      - run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/
