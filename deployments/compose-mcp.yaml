@@ -21,7 +21,7 @@
 # Other role, with its tools: MCP_ROLE=admin. Other image: IMAGE=... TAG=postgres
 # Port 8001 is only published on 127.0.0.1 (plain HTTP): MCP_BIND=0.0.0.0 behind TLS to open it.
 x-mcp: &mcp
-  image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:all}
+  image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:-all}
   command: ["alchemy-api-mcp"]
   volumes:
     - ./config_mcp.json:/app/config/config.json:ro
@@ -64,7 +64,7 @@ services:
       disable: true
 
   api:
-    image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:all}
+    image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:-all}
     profiles: [jwt]
     ports:
       - "8000:8000"
@@ -73,14 +73,14 @@ services:
       - READ_ONLY=${READ_ONLY:-false}
       - PERMISSIONS_TTL=${PERMISSIONS_TTL:-30}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET no está definido}
-      - JWT_JWKS_URL=${JWT_JWKS_URL:?JWT_JWKS_URL no está definido}
-      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY no está definido}
-      - JWT_ALGORITHMS=${JWT_ALGORITHMS:?JWT_ALGORITHMS no está definido}
-      - JWT_ISSUER=${JWT_ISSUER:?JWT_ISSUER no está definido}
-      - JWT_AUDIENCE=${JWT_AUDIENCE:?JWT_AUDIENCE no está definido}
-      - JWT_ROLE_CLAIM=${JWT_ROLE_CLAIM:?JWT_ROLE_CLAIM no está definido}
-      - JWT_LEEWAY=${JWT_LEEWAY:?JWT_LEEWAY no está definido}
-      - JWT_MINUTES=${JWT_MINUTES:?JWT_MINUTES no está definido}
+      - JWT_JWKS_URL
+      - JWT_PUBLIC_KEY
+      - JWT_ALGORITHMS
+      - JWT_ISSUER
+      - JWT_AUDIENCE
+      - JWT_ROLE_CLAIM
+      - JWT_LEEWAY
+      - JWT_MINUTES
     volumes:
       # Replaces deployments/app.py of the image (the image runs "uvicorn app:app")
       - ../example/api_fastapi_jwt.py:/app/app.py:ro

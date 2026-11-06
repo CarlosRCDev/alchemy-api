@@ -1,7 +1,7 @@
 """MCP server over a Conexion / AsyncConexion (pip install "sqlalchemy-rest-api[mcp]")
 
 Gives an LLM client (Claude Desktop, Claude Code, ...) the same operations as the REST api, as tools:
-list_tables, describe_table, select, insert, update, delete and exec_sql.
+my_permissions, list_tables, describe_table, select, insert, update, delete and exec_sql.
 
 The server runs with one role (stdio: one process per client), checked with the same "permissions"
 section as the REST api. Only the tools the role can use are registered, so a role with
@@ -32,7 +32,7 @@ from mcp_types import ToolAnnotations
 from starlette.responses import JSONResponse
 
 from . import __version__
-from .permissions import check_permission, check_table, filter_tables
+from .permissions import check_permission, check_table, filter_tables, role_permissions
 from .utils import DbException, env_bool, read_cnx_data
 
 _logger = logging.getLogger(__name__)
@@ -114,6 +114,12 @@ def create_mcp(cnx, *, roles:dict=None, tables:dict=None, role:str=None, allow_r
             registered.append(fn.__name__)
             return mcp.tool(description=description, annotations=annotations)(_db_errors(fn))
         return register
+
+    # Every role can ask for its own permissions, like GET /db/permissions
+    @tool(_READ)
+    async def my_permissions() -> dict:
+        """Role of this server, the operations it can use and its tables (["*"] means every table)"""
+        return role_permissions(cnx, roles, tables, get_role, role, allow_raw_sql=allow_raw_sql)
 
     if allowed("tables"):
         @tool(_READ)

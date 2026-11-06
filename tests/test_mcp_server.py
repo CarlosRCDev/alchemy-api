@@ -11,9 +11,10 @@ from mcp.server.mcpserver.exceptions import ToolError  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
 
 from alchemy_api.mcp_server import create_mcp, http_app, main  # noqa: E402
+from alchemy_api.permissions import read_permissions  # noqa: E402
 
 TOKEN = "t" * 32
-READ_TOOLS = ["list_tables", "describe_table", "select"]
+READ_TOOLS = ["my_permissions", "list_tables", "describe_table", "select"]
 WRITE_TOOLS = ["insert", "update", "delete"]
 
 
@@ -182,3 +183,11 @@ def test_http_auth_and_tools(cnx):
         tools = _rpc(client, "tools/list")
         assert tools.status_code == 200, tools.text
         assert {tool["name"] for tool in tools.json()["result"]["tools"]} >= set(READ_TOOLS)
+
+
+def test_my_permissions(cnx):
+    assert call(create_mcp(cnx), "my_permissions")["role"] is None
+    roles, tables = read_permissions({"reader": {"roles": ["tables", "select"], "tables": ["users"]}})
+    result = call(create_mcp(cnx, roles=roles, tables=tables, role="reader"), "my_permissions")
+    assert result == {"role": "reader", "operations": ["select", "tables"], "tables": ["users"]}
+

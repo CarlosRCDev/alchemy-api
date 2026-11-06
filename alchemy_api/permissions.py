@@ -30,6 +30,7 @@ OPERATIONS = frozenset({
 ALL_OPERATIONS = "*"
 ALL_TABLES = "*"
 PERMISSION_KEYS = ("roles", "tables")
+_WRITE_OPERATIONS = frozenset({"insert", "update", "delete", "sql"})
 
 
 def read_permissions(cfg_permissions:dict | None) -> tuple[dict | None, dict | None]:
@@ -128,6 +129,31 @@ def check_table(tables:dict | None, get_role, role:str | None, table:str | None)
     if not table_allowed(tables, role, table):
         target = f"table {table!r}" if table is not None else f"every table ({ALL_TABLES!r})"
         raise DbException(error(f"Role {role!r} can not use {target}", 403, False)) from None
+
+
+def role_permissions(cnx, roles:dict | None, tables:dict | None, get_role, role:str | None,
+                     allow_raw_sql:bool=False) -> dict:
+    """What the role can really do: {"role": ..., "operations": [...], "tables": [...]}.
+
+    operations leaves out what the connection refuses (read_only) and raw SQL when it is disabled or
+    the role does not have every table. tables are the ones of the settings, ["*"] for every table.
+    Without permissions configured everything is allowed. No role: 401, unknown role: 403"""
+    for section in (roles, tables):
+        if section is not None:
+            _require_role(get_role, role, "Permissions")
+            if role not in section:
+                raise DbException(error(f"Role {role!r} does not exist", 403, False)) from None
+    operations = set(OPERATIONS if roles is None else roles[role])
+    if getattr(cnx, "_read_only", False):
+        operations -= _WRITE_OPERATIONS
+    if not allow_raw_sql or not table_allowed(tables, role, None):
+        operations.discard("sql")
+    allowed = None if tables is None else tables[role]
+    if allowed is None:
+        names = [ALL_TABLES]
+    else:
+        names = sorted(name.upper() if cnx._ret_upper_table else name for name in allowed)
+    return {"role": role, "operations": sorted(operations), "tables": names}
 
 
 def filter_tables(tables:dict | None, get_role, role:str | None, names:list) -> list:

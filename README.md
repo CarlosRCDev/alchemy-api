@@ -147,6 +147,7 @@ app.include_router(api_log_delete, prefix="/delete_log")
 
 | Method | Path | Body | Operation |
 |---|---|---|---|
+| GET | `/db/permissions` | | none: every role can ask for its own |
 | GET | `/db/tables` | | `tables` |
 | POST | `/db/schema` | `{"table": "users"}` | `schema` |
 | POST | `/db/select` | `{"table": "users", "filterby": {...}, "orderby": {...}, "colset": [...]}` | `select` |
@@ -212,6 +213,11 @@ app.state.tables = tables
 app.state.get_role = get_role
 ```
 
+`GET /db/permissions` needs a role (401 without it, 403 if it is unknown) but no operation. `operations` leaves
+out what would be refused anyway: writes with `read_only`, and `sql` when it is disabled or the role does not have
+every table. `tables` is the list of the settings, `["*"]` for every table. Without `permissions` it gives
+`"role": null` with every operation.
+
 `roles` and `tables` are two independent controls: a request needs the operation **and** the table.
 If no role has a `"roles"` key there is no operation control (`roles` is `None`); the same for `"tables"`.
 When a key is used by some role, a role without it gets nothing for that control.
@@ -223,6 +229,7 @@ When a key is used by some role, a role without it gets nothing for that control
 | Role unknown or without the operation | 403 |
 | `schema`, `select`, `insert`, `update`, `delete` on a table not listed for the role | 403 |
 | `GET /db/tables` | only the tables and views the role can use |
+| `GET /db/permissions` | `{"role": "reader", "operations": [...], "tables": [...]}`, what the role can really do |
 | `POST /db/sql` with table control | only roles with `"tables": ["*"]` (raw SQL can touch any table), otherwise 403 |
 | Permissions configured but no `get_role` | 500 (refused, never open by mistake) |
 
@@ -238,6 +245,7 @@ can query and edit the database with the same operations and permissions as the 
 
 | Tool | Operation | Notes |
 |---|---|---|
+| `my_permissions` | none | role, operations and tables of the server, like `GET /db/permissions` |
 | `list_tables` | `tables` | only the tables and views the role can use |
 | `describe_table` | `schema` | `{"columns": [{name, type, primary_key, nullable, default}], "indexes": [...], "foreign_keys": [...]}` |
 | `select` | `select` | `{"rows": [...], "n_rows": n}`, at most `--max-rows` rows (default 1000) |

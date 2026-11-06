@@ -22,14 +22,14 @@ services:
       - READ_ONLY=${READ_ONLY:-false}
       - PERMISSIONS_TTL=${PERMISSIONS_TTL:-30}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET no está definido}
-      - JWT_JWKS_URL=${JWT_JWKS_URL:?JWT_JWKS_URL no está definido}
-      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY no está definido}
-      - JWT_ALGORITHMS=${JWT_ALGORITHMS:?JWT_ALGORITHMS no está definido}
-      - JWT_ISSUER=${JWT_ISSUER:?JWT_ISSUER no está definido}
-      - JWT_AUDIENCE=${JWT_AUDIENCE:?JWT_AUDIENCE no está definido}
-      - JWT_ROLE_CLAIM=${JWT_ROLE_CLAIM:?JWT_ROLE_CLAIM no está definido}
-      - JWT_LEEWAY=${JWT_LEEWAY:?JWT_LEEWAY no está definido}
-      - JWT_MINUTES=${JWT_MINUTES:?JWT_MINUTES no está definido}
+      - JWT_JWKS_URL
+      - JWT_PUBLIC_KEY
+      - JWT_ALGORITHMS
+      - JWT_ISSUER
+      - JWT_AUDIENCE
+      - JWT_ROLE_CLAIM
+      - JWT_LEEWAY
+      - JWT_MINUTES
     volumes:
       # Replaces deployments/app.py of the image (the image runs "uvicorn app:app")
       - ../example/api_fastapi_jwt.py:/app/app.py:ro

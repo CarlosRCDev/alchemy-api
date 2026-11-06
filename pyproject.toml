@@ -1,6 +1,6 @@
 [project]
 name = "sqlalchemy-rest-api"
-version = "0.4.2"
+version = "0.4.3"
 description = "CRUD with python dicts and auto REST api (Flask/FastAPI) over existing databases with SQLAlchemy reflection"
 readme = "README.md"
 license = "MIT"

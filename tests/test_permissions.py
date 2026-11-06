@@ -6,7 +6,7 @@ from flask import Flask
 from alchemy_api import Conexion
 from alchemy_api import api_db as flask_api
 from alchemy_api import api_fastapi as fastapi_api
-from alchemy_api.permissions import OPERATIONS, read_permissions, read_roles, read_tables, table_allowed
+from alchemy_api.permissions import OPERATIONS, read_permissions, read_roles, read_tables, role_permissions, table_allowed
 from alchemy_api.utils import DbException
 
 # One request per operation; ids differ so repeated inserts don't collide
@@ -246,3 +246,63 @@ def test_read_only_env_var_invalid(cnx_cfg, monkeypatch):
 def test_read_only_env_var_unset(cnx_cfg, monkeypatch):
     monkeypatch.delenv("READ_ONLY", raising=False)
     assert Conexion(**cnx_cfg)._read_only is False
+
+
+def _json(response):
+    return response.get_json() if hasattr(response, "get_json") else response.json()
+
+
+def permissions(client, role=None):
+    return client.get("/db/permissions", headers={"X-Role": role} if role else {})
+
+
+def test_permissions_of_role(make_client, cnx):
+    roles, tables = read_permissions({
+        "admin": {"roles": ["*"], "tables": ["*"]},
+        "reader": {"roles": ["tables", "select"], "tables": ["Users"]},
+        "empty": {},
+    })
+    client = make_client(cnx, roles, tables=tables)
+    body = _json(permissions(client, "reader"))
+    assert body == {"role": "reader", "operations": ["select", "tables"], "tables": ["users"]}
+    # Every operation, sql included: the client enables raw SQL
+    assert _json(permissions(client, "admin")) == {"role": "admin", "operations": sorted(OPERATIONS), "tables": ["*"]}
+    assert _json(permissions(client, "empty")) == {"role": "empty", "operations": [], "tables": []}
+
+
+def test_permissions_status(make_client, cnx, roles):
+    if roles is None:
+        pytest.skip("Settings without roles")
+    client = make_client(cnx, roles)
+    assert permissions(client).status_code == 401
+    assert permissions(client, "nobody").status_code == 403
+    assert make_client(cnx, roles, with_get_role=False).get("/db/permissions").status_code == 500
+
+
+def test_permissions_without_control(make_client, cnx):
+    body = _json(permissions(make_client(cnx, None)))
+    assert body == {"role": None, "operations": sorted(OPERATIONS), "tables": ["*"]}
+
+
+def test_permissions_are_effective(make_client, cnx_cfg):
+    roles, tables = read_permissions({
+        "admin": {"roles": ["*"], "tables": ["*"]},
+        "limited": {"roles": ["*"], "tables": ["users"]},
+    })
+    client = make_client(Conexion(**cnx_cfg), roles, tables=tables)
+    # Raw SQL needs every table
+    assert "sql" in _json(permissions(client, "admin"))["operations"]
+    assert "sql" not in _json(permissions(client, "limited"))["operations"]
+    client = make_client(Conexion(**cnx_cfg, read_only=True), roles, tables=tables)
+    assert _json(permissions(client, "admin"))["operations"] == sorted(OPERATIONS - {"insert", "update", "delete", "sql"})
+
+
+def test_permissions_raw_sql_disabled(cnx):
+    assert "sql" not in role_permissions(cnx, None, None, None, None)["operations"]
+    assert "sql" in role_permissions(cnx, None, None, None, None, allow_raw_sql=True)["operations"]
+
+
+def test_permissions_upper_tables(cnx_cfg):
+    _, tables = read_permissions({"reader": {"tables": ["users"]}})
+    cnx = Conexion(**cnx_cfg, modifiers={"ret_upper_table": True})
+    assert role_permissions(cnx, None, tables, get_role, "reader")["tables"] == ["USERS"]

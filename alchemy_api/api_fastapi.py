@@ -6,7 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, StrictBool
 
-from .permissions import check_permission, check_table, filter_tables
+from .permissions import check_permission, check_table, filter_tables, role_permissions
 from .utils import DbException, error
 ### FUNCTIONS ###
 # Equivalent of api_db.py for FastAPI. The connection (Conexion or AsyncConexion)
@@ -59,7 +59,8 @@ async def _call(method, *args, **kwargs):
 
 
 def require(operation):
-    """Dependency that checks the role of the request against app.state.roles"""
+    """Dependency that checks the role of the request against app.state.roles.
+    operation=None only resolves the role"""
     async def check(request: Request):
         roles = getattr(request.app.state, "roles", None)
         tables = getattr(request.app.state, "tables", None)
@@ -68,7 +69,8 @@ def require(operation):
         role = await _call(get_role, request) if needs_role and get_role else None
         # Resolved once per request, _check_table reuses it
         request.state.db_role = role
-        check_permission(roles, get_role, role, operation)
+        if operation is not None:
+            check_permission(roles, get_role, role, operation)
     return Depends(check)
 
 
@@ -151,6 +153,16 @@ async def update(body: UpdateBody, request: Request, cnx=Depends(get_cnx)):
     if not body.filterby: raise DbException(error("Not filterby in post", 400)) from None
     result_db = await _call(cnx.update, table=body.table, data=body.data, filterby=body.filterby)
     return {"update": result_db}
+
+
+@api_db.get("/permissions", dependencies=[require(None)])
+async def permissions(request: Request, cnx=Depends(get_cnx)):
+    # No operation needed: every role can ask for its own permissions
+    return role_permissions(
+        cnx, getattr(request.app.state, "roles", None), getattr(request.app.state, "tables", None),
+        getattr(request.app.state, "get_role", None), getattr(request.state, "db_role", None),
+        allow_raw_sql=getattr(request.app.state, "allow_raw_sql", False),
+    )
 
 
 @api_db.get("/tables", dependencies=[require("tables")])

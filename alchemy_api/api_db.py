@@ -2,7 +2,7 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request, make_response, current_app, g
 
-from .permissions import check_permission, check_table, filter_tables
+from .permissions import check_permission, check_table, filter_tables, role_permissions
 from .utils import DbException, error
 ### FUNCTIONS ###
 # Connection in app.config["CNX"]. Optional permissions (operations and tables per role):
@@ -18,7 +18,8 @@ api_log_delete = Blueprint("delete_log", __name__, static_folder="static", templ
 #Metodos generales (select,insert,delete,update) incluidos para testing.
 
 def require(operation):
-    """Checks the role of the request against app.config["DB_ROLES"] before the endpoint"""
+    """Checks the role of the request against app.config["DB_ROLES"] before the endpoint.
+    operation=None only resolves the role"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -28,7 +29,8 @@ def require(operation):
             needs_role = roles is not None or tables is not None
             # Resolved once per request, _check_table reuses it
             g.db_role = get_role(request) if needs_role and get_role else None
-            check_permission(roles, get_role, g.db_role, operation)
+            if operation is not None:
+                check_permission(roles, get_role, g.db_role, operation)
             return func(*args, **kwargs)
         return wrapper
     return decorator
@@ -108,6 +110,16 @@ def update():
     result_db = current_app.config["CNX"].update(table=table, data=data, **db_data)
     
     return jsonify(update=result_db)
+
+@api_db.route('/permissions', methods=['GET'])
+@require(None)
+def permissions():
+    # No operation needed: every role can ask for its own permissions
+    return jsonify(role_permissions(
+        current_app.config["CNX"], current_app.config.get("DB_ROLES"), current_app.config.get("DB_TABLES"),
+        current_app.config.get("DB_GET_ROLE"), g.get("db_role"),
+        allow_raw_sql=current_app.config.get("DB_ALLOW_RAW_SQL", False),
+    ))
 
 @api_db.route('/tables', methods=['GET'])
 @require("tables")

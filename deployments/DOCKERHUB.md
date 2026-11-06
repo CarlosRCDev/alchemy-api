@@ -62,6 +62,7 @@ Interactive docs: `http://localhost:8000/docs` (set `SWAGGER_AUTH=true` for the 
 
 | Method | Path | Body | Operation |
 |---|---|---|---|
+| GET | `/db/permissions` | | none: every role can ask for its own |
 | GET | `/db/tables` | | `tables` |
 | POST | `/db/schema` | `{"table": "t"}` | `schema` |
 | POST | `/db/select` | `{"table": "t", "filterby": {...}, "orderby": {...}, "colset": [...], "limit": 10, "offset": 0}` | `select` |
