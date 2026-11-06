@@ -26,7 +26,7 @@ on:
         default: "linux/amd64,linux/arm64"
         type: string
       latest:
-        description: "Tag the all variant as latest (uncheck for an old version)"
+        description: "Tag the sqlite variant as latest (uncheck for an old version)"
         required: false
         default: true
         type: boolean

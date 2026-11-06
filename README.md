@@ -349,7 +349,7 @@ An unknown extra makes the build fail.
 
 `deployments/build.sh` builds one image per driver, all of them with async support:
 `all`, `sqlite` (no extra drivers), `postgres`, `mysql` (also valid for MariaDB), `mssql` and `oracle`.
-Each one is tagged `<variant>` and `<version>-<variant>` (`all` also `latest` and `<version>`):
+Each one is tagged `<variant>` and `<version>-<variant>` (`sqlite` also `latest` and `<version>`):
 
 ```bash
 deployments/build.sh                                            # every variant, local only

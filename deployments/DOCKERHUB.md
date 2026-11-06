@@ -13,8 +13,8 @@ One image per database driver, all of them with async support:
 
 | Tag | Databases |
 |---|---|
-| `latest`, `all`, `<version>`, `<version>-all` | every driver below |
-| `sqlite`, `<version>-sqlite` | SQLite only (smallest image) |
+| `latest`, `<version>`, `sqlite`, `<version>-sqlite` | SQLite only (smallest image) |
+| `all`, `<version>-all` | every driver below |
 | `postgres`, `<version>-postgres` | PostgreSQL |
 | `mysql`, `<version>-mysql` | MySQL and MariaDB |
 | `mssql`, `<version>-mssql` | SQL Server |

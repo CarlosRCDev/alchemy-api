@@ -10,6 +10,8 @@ declare -A VARIANTS=(
     [mssql]="async,mssql,jwt,mcp"
     [oracle]="async,oracle,jwt,mcp"
 )
+# Variant tagged latest and <version>: the simple one, "all" has every driver
+DEFAULT_VARIANT=sqlite
 # ORDER=(all sqlite postgres mariadb mysql mssql oracle)
 ORDER=(all sqlite postgres mysql mssql oracle)
 
@@ -46,11 +48,11 @@ require_hub_image() {
 }
 
 # image_tags <variant>: one full image tag per line.
-# <variant> and <version>-<variant>; "all" also <version> and latest (unless LATEST=false)
+# <variant> and <version>-<variant>; DEFAULT_VARIANT also <version> and latest (unless LATEST=false)
 image_tags() {
     echo "$IMAGE:$1"
     echo "$IMAGE:$VERSION-$1"
-    if [[ "$1" == all ]]; then
+    if [[ "$1" == "$DEFAULT_VARIANT" ]]; then
         echo "$IMAGE:$VERSION"
         if [[ "$LATEST" != false ]]; then
             echo "$IMAGE:latest"

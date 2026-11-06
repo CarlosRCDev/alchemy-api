@@ -21,7 +21,7 @@
 # Other role, with its tools: MCP_ROLE=admin. Other image: IMAGE=... TAG=postgres
 # Port 8001 is only published on 127.0.0.1 (plain HTTP): MCP_BIND=0.0.0.0 behind TLS to open it.
 x-mcp: &mcp
-  image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:-0.4.0-all}
+  image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:all}
   command: ["alchemy-api-mcp"]
   volumes:
     - ./config_mcp.json:/app/config/config.json:ro
@@ -64,7 +64,7 @@ services:
       disable: true
 
   api:
-    image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:-0.4.0-all}
+    image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:all}
     profiles: [jwt]
     ports:
       - "8000:8000"

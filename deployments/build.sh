@@ -12,14 +12,14 @@
 #   IMAGE      image name, "user/sqlalchemy-rest-api" to push to Docker Hub (default sqlalchemy-rest-api)
 #   VERSION    version tag prefix (default: version in pyproject.toml)
 #   PLATFORMS  multi architecture build with buildx, only with --push (e.g. linux/amd64,linux/arm64)
-#   LATEST     "false" to not tag "all" as latest, e.g. for an old version (default true)
+#   LATEST     "false" to not tag "sqlite" as latest, e.g. for an old version (default true)
 #   APP        app served by the image (default deployments/app.py)
 #   ADD_EXTRAS extras added to every variant (comma separated), PACKAGES extra pip packages (not pinned).
 #              Use another IMAGE for them, e.g. JWT authentication:
 #              IMAGE=user/sqlalchemy-rest-api-jwt APP=example/api_fastapi_jwt.py ADD_EXTRAS=jwt
 #
 # Tags of each variant: IMAGE:<variant> and IMAGE:<version>-<variant>.
-# "all" also gets IMAGE:<version> and IMAGE:latest (unless LATEST=false).
+# "sqlite" also gets IMAGE:<version> and IMAGE:latest (unless LATEST=false).
 set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/variants.sh"
