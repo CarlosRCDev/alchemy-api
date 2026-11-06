@@ -7,6 +7,7 @@ Tables are read with SQLAlchemy reflection: no models to write.
 - Filters with operators (`>`, `in`, `between`, `like`, `startswith`, ...) and `or` groups
 - Sync (`Conexion`) and async (`AsyncConexion`) classes
 - Ready-made routes for Flask (blueprints) and FastAPI (routers)
+- MCP server for LLM clients (Claude Desktop, Claude Code...), with the same role permissions
 - Daily rotated file log, readable through the api
 - Oracle friendly: modifiers for upper/lower case tables and columns
 
@@ -18,7 +19,8 @@ pip install "sqlalchemy-rest-api[flask]"   # + Flask api
 pip install "sqlalchemy-rest-api[fastapi]" # + FastAPI api and uvicorn server
 pip install "sqlalchemy-rest-api[async]"   # + AsyncConexion (includes aiosqlite for async sqlite)
 pip install "sqlalchemy-rest-api[jwt]"     # + PyJWT for the JWT authentication example
-pip install "sqlalchemy-rest-api[all]"     # everything: apis, async, JWT and all database drivers
+pip install "sqlalchemy-rest-api[mcp]"     # + MCP server (alchemy-api-mcp command)
+pip install "sqlalchemy-rest-api[all]"     # everything: apis, async, JWT, MCP and all database drivers
 ```
 
 Database drivers, each one with its sync and async driver (async also needs `[async]`):
@@ -157,6 +159,17 @@ app.include_router(api_log_delete, prefix="/delete_log")
 | GET | `/log/reverse/{date}/{n_line}` | last lines first | `log_read` |
 | DELETE | `/delete_log/{date}` | removes an old log | `log_delete` |
 
+`/db/schema` (and `Conexion.schema`) returns the table structure. Column and table names follow the
+`ret_upper_cols` and `ret_upper_table` modifiers:
+
+```json
+{
+  "columns": [{"name": "id", "type": "INTEGER", "primary_key": true, "nullable": false, "default": null}],
+  "indexes": [{"name": "ix_orders_user_id", "columns": ["user_id"], "unique": false}],
+  "foreign_keys": [{"column": "user_id", "references": "users.id"}]
+}
+```
+
 ### Permissions
 
 Permissions are defined per role in the `"permissions"` section of the settings json, next to `"database"`.
@@ -217,6 +230,67 @@ For use without api, `Conexion(..., read_only=True)` refuses `insert`, `update`,
 Without the argument it is read from the `READ_ONLY` environment variable (`true`/`1`/`yes`/`on`, default off);
 an explicit `read_only=True/False` wins over the variable.
 For real protection also give read only roles a database user with only `SELECT` grants.
+
+## MCP server
+
+`alchemy-api-mcp` runs an [MCP](https://modelcontextprotocol.io) server (stdio) so an LLM client
+can query and edit the database with the same operations and permissions as the REST api:
+
+| Tool | Operation | Notes |
+|---|---|---|
+| `list_tables` | `tables` | only the tables and views the role can use |
+| `describe_table` | `schema` | `{"columns": [{name, type, primary_key, nullable, default}], "indexes": [...], "foreign_keys": [...]}` |
+| `select` | `select` | `{"rows": [...], "n_rows": n}`, at most `--max-rows` rows (default 1000) |
+| `insert` | `insert` | |
+| `update` | `update` | `filterby` required |
+| `delete` | `delete` | `filterby` required |
+| `exec_sql` | `sql` | only with `--allow-raw-sql` and a role with `"tables": ["*"]`; bind parameters |
+
+The server runs with **one role**, from the `"permissions"` section of the settings json (same format
+as [Permissions](#permissions)), and only registers the tools that role can use. A role with
+`["tables", "schema", "select"]` gets a read only server: the model never sees the write tools.
+Writes are also left out with `--read-only` (or `READ_ONLY`). With permissions configured, a missing
+or unknown role stops the server at start (fail closed).
+
+```bash
+alchemy-api-mcp --config settings.json --role reader
+```
+
+| Option | Env var | Default |
+|---|---|---|
+| `--config` | `CONFIG_FILE` | none: connection from `DB_URI` or `DB_TYPE`/`DB_SERVER`/... |
+| `--role` | `MCP_ROLE` | none (required when there are permissions) |
+| `--read-only` | `READ_ONLY` | off |
+| `--allow-raw-sql` | `DB_ALLOW_RAW_SQL` | off |
+| `--max-rows` | `MCP_MAX_ROWS` | 1000 (integer limits are capped; a `limit` below 1 is still a percentage) |
+
+`show_query` is always off in the command: it prints to stdout, which carries the stdio protocol.
+
+Claude Code (`.mcp.json`) or Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+    "mcpServers": {
+        "my-db": {
+            "command": "uvx",
+            "args": ["--from", "sqlalchemy-rest-api[mcp,postgres]", "alchemy-api-mcp",
+                     "--config", "/path/settings.json", "--role", "reader"]
+        }
+    }
+}
+```
+
+From python, with a `Conexion` or `AsyncConexion`:
+
+```python
+from alchemy_api.mcp_server import create_mcp
+
+mcp = create_mcp(cnx, roles=roles, tables=tables, role="editor", max_rows=500)
+mcp.run()  # stdio
+```
+
+An LLM with write access can still do damage within its role: prefer a read only role (and a database
+user with only `SELECT` grants) unless writes are needed.
 
 ## Docker
 

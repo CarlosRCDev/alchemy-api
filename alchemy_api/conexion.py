@@ -332,14 +332,53 @@ class Conexion:
         ret_tables = list(set(self.metadata.tables.keys()) - set(self._views)), self._views
         return [[t.upper() for t in t_v] for t_v in ret_tables] if self._ret_upper_table else ret_tables
 
-    def schema(self, table:str, **kwargs):
+    def schema(self, table:str) -> dict:
+        """Columns (name, type, primary_key, nullable, default), indexes and foreign keys of a table.
+
+        Column and table names follow the ret_upper_cols and ret_upper_table modifiers"""
         table_ = self._get_table(table)
-        schema_ = {}
-        schema_["columns"] = {tab.name: repr(tab) for tab in table_.columns}
-        schema_["indexes"] = repr(table_.indexes)
-        # schema_["foreign_keys"] = repr(table_.foreign_keys)
-        # schema_["foreign_key_constraints"] = repr(table_.foreign_key_constraints)
-        return schema_
+        dialect = self._engine.dialect
+
+        def col_name(name:str) -> str:
+            return name.upper() if self._ret_upper_cols else name
+
+        def references(fk) -> str:
+            target_table, target_col = fk.target_fullname.rsplit(".", 1)
+            if self._ret_upper_table:
+                target_table = target_table.upper()
+            return f"{target_table}.{col_name(target_col)}"
+
+        def type_(col) -> str:
+            try:
+                return col.type.compile(dialect=dialect)
+            except Exception:
+                return str(col.type.__class__.__name__)
+
+        def default(col):
+            if col.server_default is not None and hasattr(col.server_default, "arg"):
+                return str(col.server_default.arg)
+            return None
+
+        return {
+            "columns": [
+                {
+                    "name": col_name(col.name),
+                    "type": type_(col),
+                    "primary_key": col.primary_key,
+                    "nullable": col.nullable,
+                    "default": default(col),
+                }
+                for col in table_.columns
+            ],
+            "indexes": [
+                {"name": idx.name, "columns": [col_name(col.name) for col in idx.columns], "unique": idx.unique}
+                for idx in sorted(table_.indexes, key=lambda idx: idx.name or "")
+            ],
+            "foreign_keys": [
+                {"column": col_name(fk.parent.name), "references": references(fk)}
+                for fk in table_.foreign_keys
+            ],
+        }
 
     def exec_sql(self, statement, *, ret:bool=False, bind:dict=None):
         self._require_writable()

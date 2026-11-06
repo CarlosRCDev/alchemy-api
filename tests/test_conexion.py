@@ -1,7 +1,9 @@
 from datetime import date, datetime
 
 import pytest
+from sqlalchemy import Column, ForeignKey, Integer, MetaData, Table, create_engine
 
+from alchemy_api import Conexion
 from alchemy_api.utils import DbException
 
 
@@ -237,3 +239,49 @@ def test_offset_without_orderby(cnx):
     # SQL Server needs ORDER BY for OFFSET: the primary key is used when there is no orderby
     rows = cnx.select("users", offset=1)
     assert len(rows) == 3
+
+
+def test_schema(cnx):
+    schema = cnx.schema("users")
+    columns = {col["name"]: col for col in schema["columns"]}
+    assert set(columns) == {"id", "name", "age", "created"}
+    assert columns["id"]["primary_key"] is True
+    assert columns["id"]["nullable"] is False
+    assert columns["name"]["primary_key"] is False
+    assert "CHAR" in columns["name"]["type"].upper()
+    assert schema["foreign_keys"] == []
+
+
+def test_schema_unknown_table(cnx):
+    with pytest.raises(DbException):
+        cnx.schema("missing")
+
+
+@pytest.fixture
+def orders_table(cnx_cfg):
+    # Table with a foreign key and an index, not part of the users fixture
+    engine = create_engine(cnx_cfg["cnx_data"], **cnx_cfg["cnx_data_extra"])
+    metadata = MetaData()
+    Table("users", metadata, autoload_with=engine)
+    orders = Table(
+        "orders", metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer, ForeignKey("users.id"), index=True),
+    )
+    orders.create(engine)
+    yield orders
+    orders.drop(engine)
+    engine.dispose()
+
+
+@pytest.mark.parametrize("modifiers, column, references", [
+    ({}, "user_id", "users.id"),
+    ({"ret_upper_cols": True}, "USER_ID", "users.ID"),
+    ({"ret_upper_table": True}, "user_id", "USERS.id"),
+    ({"ret_upper_cols": True, "ret_upper_table": True}, "USER_ID", "USERS.ID"),
+])
+def test_schema_modifiers(cnx_cfg, orders_table, modifiers, column, references):
+    schema = Conexion(**cnx_cfg, modifiers=modifiers).schema("orders")
+    assert column in [col["name"] for col in schema["columns"]]
+    assert [column] in [idx["columns"] for idx in schema["indexes"]]
+    assert schema["foreign_keys"] == [{"column": column, "references": references}]

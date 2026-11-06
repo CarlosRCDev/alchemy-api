@@ -78,7 +78,7 @@ def test_update_delete_require_filterby(any_client):
 def test_tables_and_schema(any_client):
     assert any_client.get("/db/tables").json() == {"tables": ["users"], "views": []}
     schema = any_client.post("/db/schema", json={"table": "users"}).json()
-    assert set(schema["columns"]) == {"id", "name", "age", "created"}
+    assert {col["name"].lower() for col in schema["columns"]} == {"id", "name", "age", "created"}
 
 
 def test_sql_disabled_by_default(any_client):
