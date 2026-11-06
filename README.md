@@ -233,7 +233,7 @@ For real protection also give read only roles a database user with only `SELECT`
 
 ## MCP server
 
-`alchemy-api-mcp` runs an [MCP](https://modelcontextprotocol.io) server (stdio) so an LLM client
+`alchemy-api-mcp` runs an [MCP](https://modelcontextprotocol.io) server (stdio or streamable HTTP) so an LLM client
 can query and edit the database with the same operations and permissions as the REST api:
 
 | Tool | Operation | Notes |
@@ -263,6 +263,10 @@ alchemy-api-mcp --config settings.json --role reader
 | `--read-only` | `READ_ONLY` | off |
 | `--allow-raw-sql` | `DB_ALLOW_RAW_SQL` | off |
 | `--max-rows` | `MCP_MAX_ROWS` | 1000 (integer limits are capped; a `limit` below 1 is still a percentage) |
+| `--transport` | `MCP_TRANSPORT` | `stdio`; `http` serves streamable HTTP on `/mcp` |
+| `--host` | `MCP_HOST` | `127.0.0.1` (http) |
+| `--port` | `MCP_PORT` | `8001` (http) |
+| | `MCP_TOKEN` | required with `http`, at least 32 characters; only from the environment |
 
 `show_query` is always off in the command: it prints to stdout, which carries the stdio protocol.
 
@@ -275,6 +279,27 @@ Claude Code (`.mcp.json`) or Claude Desktop (`claude_desktop_config.json`):
             "command": "uvx",
             "args": ["--from", "sqlalchemy-rest-api[mcp,postgres]", "alchemy-api-mcp",
                      "--config", "/path/settings.json", "--role", "reader"]
+        }
+    }
+}
+```
+
+With `--transport http` the server listens on a port and refuses to start without `MCP_TOKEN`. Every request
+needs `Authorization: Bearer <token>`, except `GET /health`. There is one token and one role per process: run one
+server per role. The traffic is plain HTTP, so put TLS in front of it outside localhost.
+
+```bash
+export MCP_TOKEN="$(openssl rand -hex 32)"
+alchemy-api-mcp --config settings.json --role reader --transport http
+```
+
+```json
+{
+    "mcpServers": {
+        "my-db": {
+            "type": "http",
+            "url": "http://127.0.0.1:8001/mcp",
+            "headers": {"Authorization": "Bearer ${MCP_TOKEN}"}
         }
     }
 }
@@ -369,6 +394,24 @@ users database in the `/app/db` volume). The management commands run in the same
 docker compose -f deployments/compose-jwt.yaml run --rm api python app.py init-users-db
 docker compose -f deployments/compose-jwt.yaml run --rm api python app.py add-user marta reader
 JWT_SECRET="$(openssl rand -hex 32)" JWT_ISSUER=local docker compose -f deployments/compose-jwt.yaml up -d
+```
+
+From 0.4.0 the images also have the MCP server (extra `mcp`). `deployments/compose-mcp.yaml` runs it alone or
+next to the JWT api, over the same database. It uses its own settings, `deployments/config_mcp.json` (copied from
+`deployments/config_mcp.example.json`), because the MCP role is in `"permissions"`, which the JWT settings refuse:
+
+```bash
+export MCP_TOKEN="$(openssl rand -hex 32)"   # the MCP client needs the same value
+
+# Only MCP, streamable HTTP on http://127.0.0.1:8001/mcp
+docker compose -f deployments/compose-mcp.yaml up -d
+
+# MCP + JWT api on port 8000 (create the users first, see the header of the compose file)
+JWT_SECRET="$(openssl rand -hex 32)" JWT_ISSUER=local \
+  docker compose -f deployments/compose-mcp.yaml --profile jwt up -d
+
+# stdio in both cases: this is the command of the MCP client
+docker compose -f deployments/compose-mcp.yaml run --rm -T mcp-stdio
 ```
 
 With compose, the `EXTRAS` build argument is read from the environment variable of the same name:

@@ -35,7 +35,7 @@ backends because the container is down are not code failures.
 - `alchemy_api/async_conexion.py` — `AsyncConexion(Conexion)`: same API, `async` methods, built with `await AsyncConexion.create(...)`.
 - `alchemy_api/api_db.py` — Flask blueprints (`api_db`, `api_log`, `api_log_delete`), config in `app.config["CNX"|"DB_ROLES"|"DB_GET_ROLE"|"DB_ALLOW_RAW_SQL"]`.
 - `alchemy_api/api_fastapi.py` — FastAPI routers, config in `app.state.cnx|roles|get_role|allow_raw_sql`; `_call` awaits async methods and runs sync ones in a threadpool.
-- `alchemy_api/mcp_server.py` — MCP server (`mcp>=2.3`, `MCPServer`): `create_mcp(cnx, roles=, tables=, role=)` registers only the tools the role can use; `main` is the `alchemy-api-mcp` command (stdio, `show_query` forced off). Mirror REST permission/guard changes here too.
+- `alchemy_api/mcp_server.py` — MCP server (`mcp>=2.3`, `MCPServer`): `create_mcp(cnx, roles=, tables=, role=)` registers only the tools the role can use; `http_app` wraps it for streamable HTTP with a required bearer token (`MCP_TOKEN`); `main` is the `alchemy-api-mcp` command (stdio or http, `show_query` forced off). Mirror REST permission/guard changes here too.
 - `alchemy_api/permissions.py` — `read_permissions` ("permissions" settings -> roles map + tables map), `check_permission` / `check_table`.
 - `alchemy_api/utils.py` — `DbException`, `error` namedtuple, `read_cnx_data` (settings json/env vars -> engine args), `env_bool`.
 - `tests/settings/*.json` — one file per backend; `conftest.py` parametrizes every test with each file.
@@ -53,7 +53,7 @@ backends because the container is down are not code failures.
 - **Safety guards are intentional — don't weaken them**: `update`/`delete` require `filterby`
   and refuse a statement with no WHERE (`_require_filterby`, `_require_where`); `read_only`
   (or `READ_ONLY` env) blocks writes with 403; `/db/sql` is off unless explicitly enabled;
-  roles configured without `get_role` fail closed (500), never open.
+  roles configured without `get_role` fail closed (500), never open; the MCP HTTP transport refuses to start without `MCP_TOKEN`.
 - **Raw SQL** only with bind parameters (`exec_sql(..., bind={...})`), never string formatting.
 - **Optional dependencies**: the core install is only `sqlalchemy`. Never import flask, fastapi,
   greenlet, aiosqlite or drivers at module level from `conexion.py`, `utils.py` or `__init__.py`

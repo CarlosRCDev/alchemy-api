@@ -1,0 +1,94 @@
+# MCP server, alone or next to the JWT api (example/api_fastapi_jwt.py), with the published image.
+# Run from the repository root:
+#   cp deployments/config_mcp.example.json deployments/config_mcp.json   # edit it (role in "permissions")
+#
+# 1. Only MCP, streamable HTTP on http://127.0.0.1:8001/mcp (the token is required, the role defaults to reader):
+#   export MCP_TOKEN="$(openssl rand -hex 32)"   # the MCP client needs the same value
+#   docker compose -f deployments/compose-mcp.yaml up -d
+#
+# 2. MCP + JWT api on port 8000, over the same data database (the MCP server keeps its own role and token):
+#   cp deployments/config_jwt.example.json deployments/config_jwt.json   # same "database", no "permissions"
+#   docker compose -f deployments/compose-mcp.yaml run --rm api python app.py init-users-db
+#   docker compose -f deployments/compose-mcp.yaml run --rm api python app.py add-user marta reader
+#   docker compose -f deployments/compose-mcp.yaml run --rm api python app.py grant reader table users
+#   export MCP_TOKEN="$(openssl rand -hex 32)"
+#   JWT_SECRET="$(openssl rand -hex 32)" JWT_ISSUER=local \
+#       docker compose -f deployments/compose-mcp.yaml --profile jwt up -d
+#
+# stdio in either case: the MCP client runs this command, one container per client:
+#   docker compose -f deployments/compose-mcp.yaml run --rm -T mcp-stdio
+#
+# Other role, with its tools: MCP_ROLE=admin. Other image: IMAGE=... TAG=postgres
+# Port 8001 is only published on 127.0.0.1 (plain HTTP): MCP_BIND=0.0.0.0 behind TLS to open it.
+x-mcp: &mcp
+  image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:-0.4.0-all}
+  command: ["alchemy-api-mcp"]
+  volumes:
+    - ./config_mcp.json:/app/config/config.json:ro
+    # Same volume as the api: the sqlite data database and the logs
+    - api-db:/app/db
+    - api-log:/app/logdb
+
+services:
+  mcp:
+    <<: *mcp
+    ports:
+      - "${MCP_BIND:-127.0.0.1}:${MCP_PORT:-8001}:8001"
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8001
+      - MCP_TOKEN
+      - MCP_ROLE=${MCP_ROLE:-reader}
+      - MCP_MAX_ROWS=${MCP_MAX_ROWS:-1000}
+      - READ_ONLY=${READ_ONLY:-false}
+      - DB_ALLOW_RAW_SQL=${DB_ALLOW_RAW_SQL:-false}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  mcp-stdio:
+    <<: *mcp
+    # Only with "run": it is started by the MCP client and stopped with it
+    profiles: [stdio]
+    environment:
+      - MCP_ROLE=${MCP_ROLE:-reader}
+      - MCP_MAX_ROWS=${MCP_MAX_ROWS:-1000}
+      - READ_ONLY=${READ_ONLY:-false}
+      - DB_ALLOW_RAW_SQL=${DB_ALLOW_RAW_SQL:-false}
+    healthcheck:
+      disable: true
+
+  api:
+    image: ${IMAGE:-diablocharly/sqlalchemy-rest-api}:${TAG:-0.4.0-all}
+    profiles: [jwt]
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_ALLOW_RAW_SQL=${DB_ALLOW_RAW_SQL:-false}
+      - READ_ONLY=${READ_ONLY:-false}
+      - PERMISSIONS_TTL=${PERMISSIONS_TTL:-30}
+      - JWT_SECRET
+      - JWT_JWKS_URL
+      - JWT_PUBLIC_KEY
+      - JWT_ALGORITHMS
+      - JWT_ISSUER
+      - JWT_AUDIENCE
+      - JWT_ROLE_CLAIM
+      - JWT_LEEWAY
+      - JWT_MINUTES
+    volumes:
+      # Replaces deployments/app.py of the image (the image runs "uvicorn app:app")
+      - ../example/api_fastapi_jwt.py:/app/app.py:ro
+      - ./config_jwt.json:/app/config/config.json:ro
+      - api-db:/app/db
+      - api-log:/app/logdb
+    restart: unless-stopped
+
+volumes:
+  api-db:
+  api-log:

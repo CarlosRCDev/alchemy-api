@@ -13,8 +13,10 @@ connection is read_only, and exec_sql only exists with allow_raw_sql and a role 
     mcp.run()  # stdio
 
 Command line (see main): alchemy-api-mcp --config settings.json --role reader
+Streamable HTTP instead of stdio: MCP_TOKEN=... alchemy-api-mcp --transport http --role reader
 """
 from functools import wraps
+from hmac import compare_digest
 from inspect import iscoroutinefunction
 import argparse
 import json
@@ -27,13 +29,17 @@ import anyio.to_thread
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
+from starlette.responses import JSONResponse
 
+from . import __version__
 from .permissions import check_permission, check_table, filter_tables
 from .utils import DbException, env_bool, read_cnx_data
 
 _logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_ROWS = 1000
+DEFAULT_PORT = 8001
+MIN_TOKEN_LENGTH = 32
 WRITE_OPERATIONS = ("insert", "update", "delete")
 
 _READ = ToolAnnotations(read_only_hint=True, open_world_hint=False)
@@ -205,10 +211,38 @@ def _db_errors(fn):
     return wrapper
 
 
+def _bearer_auth(app, token:str):
+    """ASGI wrapper: http requests need "Authorization: Bearer <token>", except /health"""
+    expected = f"Bearer {token}".encode()
+
+    async def wrapper(scope, receive, send):
+        if scope["type"] == "http" and scope["path"] != "/health":
+            if not compare_digest(dict(scope["headers"]).get(b"authorization", b""), expected):
+                response = JSONResponse({"error": "unauthorized"}, status_code=401,
+                                        headers={"WWW-Authenticate": "Bearer"})
+                return await response(scope, receive, send)
+        await app(scope, receive, send)
+    return wrapper
+
+
+def http_app(mcp:MCPServer, token:str, host:str="127.0.0.1"):
+    """ASGI app of the server (streamable HTTP on /mcp), protected with a bearer token.
+
+    One token, one role: the role of the server. Stateless, so a restart does not break the clients"""
+    if len(token or "") < MIN_TOKEN_LENGTH:
+        raise ValueError(f"The HTTP transport needs a token of at least {MIN_TOKEN_LENGTH} characters (MCP_TOKEN)")
+
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health(request):
+        return JSONResponse({"status": "ok", "version": __version__})
+
+    return _bearer_auth(mcp.streamable_http_app(stateless_http=True, json_response=True, host=host), token)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="alchemy-api-mcp",
-        description="MCP server (stdio) over an existing database with sqlalchemy-rest-api",
+        description="MCP server (stdio or streamable HTTP) over an existing database with sqlalchemy-rest-api",
     )
     parser.add_argument("--config", default=getenv("CONFIG_FILE"),
                         help="settings json with \"database\" and optional \"permissions\" (env CONFIG_FILE). "
@@ -221,6 +255,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-rows", type=int, default=int(getenv("MCP_MAX_ROWS", DEFAULT_MAX_ROWS)),
                         help=f"maximum rows per select (env MCP_MAX_ROWS, default {DEFAULT_MAX_ROWS})")
     parser.add_argument("--name", default="sqlalchemy-rest-api", help="server name")
+    parser.add_argument("--transport", choices=("stdio", "http"), default=getenv("MCP_TRANSPORT", "stdio"),
+                        help="stdio or streamable HTTP on /mcp, which needs MCP_TOKEN (env MCP_TRANSPORT, default stdio)")
+    parser.add_argument("--host", default=getenv("MCP_HOST", "127.0.0.1"),
+                        help="http: address to listen on (env MCP_HOST, default 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=int(getenv("MCP_PORT", DEFAULT_PORT)),
+                        help=f"http: port (env MCP_PORT, default {DEFAULT_PORT})")
     return parser
 
 
@@ -229,6 +269,8 @@ def main(argv:list[str] | None = None):
     from .permissions import read_permissions
 
     args = _parser().parse_args(argv)
+    # Only from the environment: a command line argument is visible in the process list
+    token = getenv("MCP_TOKEN")
     settings = {}
     if args.config:
         config = Path(args.config).expanduser()
@@ -244,10 +286,15 @@ def main(argv:list[str] | None = None):
     try:
         mcp = create_mcp(cnx, roles=roles, tables=tables, role=args.role,
                          allow_raw_sql=args.allow_raw_sql, max_rows=args.max_rows, name=args.name)
+        app = http_app(mcp, token, args.host) if args.transport == "http" else None
     except ValueError as err:
         raise SystemExit(str(err)) from None
     try:
-        mcp.run("stdio")
+        if app is None:
+            mcp.run("stdio")
+        else:
+            import uvicorn
+            uvicorn.run(app, host=args.host, port=args.port)
     finally:
         cnx._engine.dispose()
 

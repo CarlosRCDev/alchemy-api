@@ -8,8 +8,11 @@ from alchemy_api import AsyncConexion, Conexion
 pytest.importorskip("mcp")
 from mcp.server.mcpserver.exceptions import ToolError  # noqa: E402
 
-from alchemy_api.mcp_server import create_mcp, main  # noqa: E402
+from starlette.testclient import TestClient  # noqa: E402
 
+from alchemy_api.mcp_server import create_mcp, http_app, main  # noqa: E402
+
+TOKEN = "t" * 32
 READ_TOOLS = ["list_tables", "describe_table", "select"]
 WRITE_TOOLS = ["insert", "update", "delete"]
 
@@ -141,3 +144,41 @@ def test_main_fails_without_role(tmp_path, settings_json, db_cfg):
     config.write_text(json.dumps(settings_json))
     with pytest.raises(SystemExit, match="no role"):
         main(["--config", str(config)])
+
+
+def test_main_http_needs_token(tmp_path, settings_json, monkeypatch):
+    monkeypatch.delenv("MCP_TOKEN", raising=False)
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps(settings_json))
+    with pytest.raises(SystemExit, match="MCP_TOKEN"):
+        main(["--config", str(config), "--role", "reader", "--transport", "http"])
+
+
+@pytest.mark.parametrize("token", [None, "", "short"])
+def test_http_refuses_weak_token(cnx, token):
+    with pytest.raises(ValueError, match="MCP_TOKEN"):
+        http_app(create_mcp(cnx), token)
+
+
+def _rpc(client:TestClient, method:str, params:dict=None, token:str=TOKEN):
+    headers = {"Accept": "application/json, text/event-stream"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
+    return client.post("/mcp", json=body, headers=headers)
+
+
+def test_http_auth_and_tools(cnx):
+    app = http_app(create_mcp(cnx), TOKEN, host="0.0.0.0")
+    with TestClient(app) as client:
+        assert client.get("/health").json()["status"] == "ok"
+        assert _rpc(client, "tools/list", token=None).status_code == 401
+        assert _rpc(client, "tools/list", token="x" * 32).status_code == 401
+        initialize = _rpc(client, "initialize", {
+            "protocolVersion": "2025-06-18", "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1"},
+        })
+        assert initialize.status_code == 200, initialize.text
+        tools = _rpc(client, "tools/list")
+        assert tools.status_code == 200, tools.text
+        assert {tool["name"] for tool in tools.json()["result"]["tools"]} >= set(READ_TOOLS)
