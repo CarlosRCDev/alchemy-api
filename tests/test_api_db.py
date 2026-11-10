@@ -48,3 +48,16 @@ def test_delete(client):
     assert "table" in rsp.json["error"]
     rsp = client.post("/db/delete", json={"table": "users", "filterby": {"id": 1}})
     assert rsp.json == {"delete": 1}
+
+
+def test_select_join(cnx_orders):
+    app = Flask(__name__)
+    app.config["CNX"] = cnx_orders
+    app.register_blueprint(api_db, url_prefix="/db")
+    rsp = app.test_client().post("/db/select", json={
+        "table": "users", "colset": ["name", "orders.total"],
+        "join": [{"table": "orders", "type": "left", "on": {"id": "user_id"}}],
+        "orderby": {"id": False, "orders.id": False},
+    })
+    assert rsp.status_code == 200
+    assert [r["orders.total"] for r in rsp.json] == [10, 20, 5, None, None]

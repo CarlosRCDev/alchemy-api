@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
-from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, create_engine, insert
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, MetaData, String, Table, create_engine, insert
 
 from alchemy_api.permissions import read_permissions
 from alchemy_api.utils import read_cnx_data
@@ -119,3 +119,38 @@ def cnx(cnx_cfg):
 def cnx_no_raise(cnx_cfg):
     from alchemy_api import Conexion
     return Conexion(**cnx_cfg, _raise=False)
+
+
+ORDERS = [
+    {"id": 1, "user_id": 1, "total": 10},
+    {"id": 2, "user_id": 1, "total": 20},
+    {"id": 3, "user_id": 2, "total": 5},
+    {"id": 4, "user_id": None, "total": 7},  # without user: only in a right join
+]
+
+
+@pytest.fixture
+def orders_table(cnx_cfg):
+    # Table with a foreign key to users and an index, not part of the users fixture.
+    # Request it before creating the connection: tables are reflected when the connection is created
+    engine = create_engine(cnx_cfg["cnx_data"], **cnx_cfg["cnx_data_extra"])
+    metadata = MetaData()
+    Table("users", metadata, autoload_with=engine)
+    orders = Table(
+        "orders", metadata,
+        Column("id", Integer, primary_key=True, autoincrement=False),
+        Column("user_id", Integer, ForeignKey("users.id"), index=True),
+        Column("total", Integer),
+    )
+    orders.create(engine)
+    with engine.begin() as conn:
+        conn.execute(insert(orders), ORDERS)
+    yield orders
+    orders.drop(engine)
+    engine.dispose()
+
+
+@pytest.fixture
+def cnx_orders(cnx_cfg, orders_table):
+    from alchemy_api import Conexion
+    return Conexion(**cnx_cfg)

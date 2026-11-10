@@ -123,3 +123,27 @@ def test_logs(cnx_cfg):
         assert client.get("/log/reverse/2000-01-01").status_code == 404
         # The current log can not be removed
         assert client.delete(f"/delete_log/{today}").status_code == 400
+
+
+def test_select_join(cnx_cfg, async_db_cfg, orders_table):
+    # Tables are reflected when the connection is created: after orders_table
+    for cnx in ("sync", "async"):
+        if cnx == "sync":
+            app = make_app(Conexion(**cnx_cfg))
+        else:
+            @asynccontextmanager
+            async def lifespan(app):
+                app.state.cnx = await AsyncConexion.create(**async_db_cfg)
+                yield
+                await app.state.cnx._engine.dispose()
+            app = make_app(lifespan=lifespan)
+        with TestClient(app) as client:
+            rsp = client.post("/db/select", json={
+                "table": "users", "colset": ["name", "orders.id"],
+                "join": [{"table": "orders", "type": "right", "on": {"id": "user_id"}}],
+                "orderby": {"orders.id": False},
+            })
+            assert rsp.status_code == 200
+            assert [r["name"] for r in rsp.json()] == ["ana", "ana", "luis", None]
+            rsp = client.post("/db/select", json={"table": "users", "join": [{"table": "orders", "type": "full"}]})
+            assert rsp.status_code == 422

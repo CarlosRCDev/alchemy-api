@@ -306,3 +306,38 @@ def test_permissions_upper_tables(cnx_cfg):
     _, tables = read_permissions({"reader": {"tables": ["users"]}})
     cnx = Conexion(**cnx_cfg, modifiers={"ret_upper_table": True})
     assert role_permissions(cnx, None, tables, get_role, "reader")["tables"] == ["USERS"]
+
+
+def _json(rsp):
+    # Flask and FastAPI test responses
+    return rsp.get_json() if hasattr(rsp, "get_json") else rsp.json()
+
+
+JOIN_SELECT = {
+    "table": "users", "colset": ["name", "orders.total"],
+    "join": [{"table": "orders", "type": "inner", "on": {"id": "user_id"}}],
+    "orderby": {"orders.id": False},
+}
+
+
+def test_join_needs_every_table(make_client, cnx_orders):
+    # A role limited to "users" can not read "orders" through a join
+    roles = read_roles({"reader": ["select"], "admin": ["select"]})
+    tables = read_tables({"reader": ["users"], "admin": ["users", "orders"]})
+    client = make_client(cnx_orders, roles, tables=tables)
+    rsp = client.post("/db/select", json=JOIN_SELECT, headers={"X-Role": "reader"})
+    assert rsp.status_code == 403
+    assert "orders" in _json(rsp)["error"]
+    rsp = client.post("/db/select", json=JOIN_SELECT, headers={"X-Role": "admin"})
+    assert rsp.status_code == 200
+    assert _json(rsp) == [{"name": "ana", "orders.total": 10}, {"name": "ana", "orders.total": 20}, {"name": "luis", "orders.total": 5}]
+
+
+@pytest.mark.parametrize("join", ["orders", [{"type": "left"}], [{"table": 1}]])
+def test_join_malformed_with_table_permissions(make_client, cnx_orders, join):
+    # Malformed joins are rejected before the table check, never a 500
+    roles = read_roles({"admin": ["select"]})
+    tables = read_tables({"admin": ["users", "orders"]})
+    client = make_client(cnx_orders, roles, tables=tables)
+    rsp = client.post("/db/select", json={"table": "users", "join": join}, headers={"X-Role": "admin"})
+    assert rsp.status_code in (400, 422)

@@ -1,7 +1,6 @@
 from datetime import date, datetime
 
 import pytest
-from sqlalchemy import Column, ForeignKey, Integer, MetaData, Table, create_engine
 
 from alchemy_api import Conexion
 from alchemy_api.utils import DbException
@@ -257,23 +256,6 @@ def test_schema_unknown_table(cnx):
         cnx.schema("missing")
 
 
-@pytest.fixture
-def orders_table(cnx_cfg):
-    # Table with a foreign key and an index, not part of the users fixture
-    engine = create_engine(cnx_cfg["cnx_data"], **cnx_cfg["cnx_data_extra"])
-    metadata = MetaData()
-    Table("users", metadata, autoload_with=engine)
-    orders = Table(
-        "orders", metadata,
-        Column("id", Integer, primary_key=True),
-        Column("user_id", Integer, ForeignKey("users.id"), index=True),
-    )
-    orders.create(engine)
-    yield orders
-    orders.drop(engine)
-    engine.dispose()
-
-
 @pytest.mark.parametrize("modifiers, column, references", [
     ({}, "user_id", "users.id"),
     ({"ret_upper_cols": True}, "USER_ID", "users.ID"),
@@ -285,3 +267,107 @@ def test_schema_modifiers(cnx_cfg, orders_table, modifiers, column, references):
     assert column in [col["name"] for col in schema["columns"]]
     assert [column] in [idx["columns"] for idx in schema["indexes"]]
     assert schema["foreign_keys"] == [{"column": column, "references": references}]
+
+
+def test_join_inner(cnx_orders):
+    rows = cnx_orders.select(
+        "users", colset=["name", "orders.total"],
+        join=[{"table": "orders", "type": "inner", "on": {"id": "user_id"}}],
+        orderby={"orders.id": False},
+    )
+    assert rows == [{"name": "ana", "orders.total": 10}, {"name": "ana", "orders.total": 20}, {"name": "luis", "orders.total": 5}]
+
+
+def test_join_left(cnx_orders):
+    rows = cnx_orders.select(
+        "users", colset=["name", "orders.total"],
+        join={"table": "orders", "type": "left", "on": {"id": "user_id"}},
+        orderby={"id": False, "orders.id": False},
+    )
+    assert [(r["name"], r["orders.total"]) for r in rows] == [("ana", 10), ("ana", 20), ("luis", 5), ("marta", None), ("pepa", None)]
+
+
+def test_join_right(cnx_orders):
+    # The order without user (id 4) is kept, with the users columns as NULL
+    rows = cnx_orders.select(
+        "users", colset=["name", "orders.id"],
+        join=[{"table": "orders", "type": "right", "on": {"id": "user_id"}}],
+        orderby={"orders.id": False},
+    )
+    assert rows == [
+        {"name": "ana", "orders.id": 1}, {"name": "ana", "orders.id": 2},
+        {"name": "luis", "orders.id": 3}, {"name": None, "orders.id": 4},
+    ]
+
+
+def test_join_foreign_key_and_default_columns(cnx_orders):
+    # Without "on" the foreign key is used; without colset every column, joined ones as "table.column"
+    rows = cnx_orders.select("users", join=[{"table": "orders"}], filterby={"orders.total": 5})
+    assert len(rows) == 1
+    assert {k: rows[0][k] for k in ("id", "name", "orders.id", "orders.user_id", "orders.total")} == {
+        "id": 2, "name": "luis", "orders.id": 3, "orders.user_id": 2, "orders.total": 5,
+    }
+    assert set(rows[0]) == {"id", "name", "age", "created", "orders.id", "orders.user_id", "orders.total"}
+
+
+def test_join_filter_count_offset_limit(cnx_orders):
+    join = [{"table": "orders", "type": "left", "on": {"id": "user_id"}}]
+    assert list(cnx_orders.select("users", join=join, count=True).values()) == [5]
+    assert list(cnx_orders.select("users", join=join, count=True, filterby={"orders.total": {"type": ">", "value": 8}}).values()) == [2]
+    # NULLs sort first or last depending on the backend: left out
+    rows = cnx_orders.select(
+        "users", colset=["orders.id"], join=join, filterby={"orders.id": {"type": "is_not", "value": None}},
+        orderby={"orders.id": True}, offset=1, limit=2, send_colnames=False,
+    )
+    assert rows == [[2], [1]]
+
+
+def test_join_from_joined_table(cnx_orders):
+    # The base table can be the one with the foreign key; "on" keys can be "table.column"
+    rows = cnx_orders.select(
+        "orders", colset=["id", "users.name"],
+        join=[{"table": "users", "type": "left", "on": {"orders.user_id": "users.id"}}],
+        orderby={"id": False},
+    )
+    assert [r["users.name"] for r in rows] == ["ana", "ana", "luis", None]
+
+
+@pytest.mark.parametrize("join", [
+    "orders",
+    [{"type": "inner"}],
+    [{"table": "orders", "type": "full"}],
+    [{"table": "orders", "type": "LEFT"}],
+    [{"table": "orders", "how": "left"}],
+    [{"table": "missing", "on": {"id": "user_id"}}],
+    [{"table": "orders", "on": {"typo": "user_id"}}],
+    [{"table": "orders", "on": {"id": "typo"}}],
+    [{"table": "orders", "on": {}}],
+    [{"table": "users", "on": {"id": "id"}}],
+])
+def test_join_invalid(cnx_orders, join):
+    with pytest.raises(DbException):
+        cnx_orders.select("users", join=join)
+
+
+def test_join_on_unknown_column_raises_without_raise(cnx_cfg, orders_table):
+    # A discarded "on" condition would join every row: always an error
+    cnx = Conexion(**cnx_cfg, _raise=False)
+    with pytest.raises(DbException):
+        cnx.select("users", join=[{"table": "orders", "on": {"typo": "user_id"}}])
+
+
+def test_join_unknown_column_raises(cnx_orders):
+    with pytest.raises(DbException):
+        cnx_orders.select("users", colset=["orders.typo"], join=[{"table": "orders"}])
+    with pytest.raises(DbException):
+        cnx_orders.select("users", filterby={"orders.typo": 1}, join=[{"table": "orders"}])
+
+
+def test_join_modifiers(cnx_cfg, orders_table):
+    cnx = Conexion(**cnx_cfg, modifiers={"lower_table": True, "lower_cols": True, "ret_upper_cols": True})
+    rows = cnx.select(
+        "USERS", colset=["NAME", "ORDERS.TOTAL"],
+        join=[{"table": "ORDERS", "type": "inner", "on": {"ID": "USER_ID"}}],
+        filterby={"ORDERS.TOTAL": 5},
+    )
+    assert rows == [{"NAME": "luis", "ORDERS.TOTAL": 5}]

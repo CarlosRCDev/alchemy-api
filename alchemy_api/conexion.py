@@ -14,6 +14,7 @@ from sqlalchemy import insert as db_insert
 from sqlalchemy import delete as db_delete
 from sqlalchemy import update as db_update
 from sqlalchemy import or_ as db_or, and_ as db_and
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.elements import TextClause
 
@@ -73,6 +74,31 @@ def _configure_logger(config_log):
         config_log.get("level_log", "INFO"),
     )
     return logger, log_path
+
+
+_JOIN_TYPES = ("inner", "left", "right")
+_JOIN_KEYS = ("table", "type", "on")
+
+
+class _JoinSource:
+    """Tables of a select with join. c: columns by name, base table ones as "column" and "table.column",
+    joined ones as "table.column". default: the columns of a select without colset, in table order"""
+    def __init__(self, base:Table) -> None:
+        self.from_ = base
+        self.tables = set()
+        self.c = {}
+        self.default = []
+        self.add(base, base=True)
+
+    def add(self, table:Table, base:bool=False) -> None:
+        self.tables.add(table.name)
+        for col in table.c:
+            if base:
+                self.c[col.key] = col
+                self.default.append(col.key)
+            self.c[f"{table.name}.{col.key}"] = col
+            if not base:
+                self.default.append(f"{table.name}.{col.key}")
 
 
 class Conexion:
@@ -177,21 +203,42 @@ class Conexion:
             for table in tables_:
                 Table(table, self._metadata, autoload_with=self._engine)
     
-    def select(self, table:str, *, colset:list=None, filterby:dict=None, orderby:dict=None, offset:int=None,limit:float=None, count:bool=False, send_colnames:bool=True, dt_format:str=None, **kwargs):
+    def select(self, table:str, *, colset:list=None, filterby:dict=None, orderby:dict=None, offset:int=None,limit:float=None, count:bool=False, send_colnames:bool=True, dt_format:str=None, join:list=None, **kwargs):
+        statement, colnames = self._select_statement(
+            table, colset=colset, filterby=filterby, orderby=orderby, offset=offset, limit=limit, count=count, join=join,
+        )
+        with self._session() as session:
+            self._show_query(statement)
+            result = session.execute(statement).all()
+        return self._select_result(statement, result, colnames, count=count, send_colnames=send_colnames, dt_format=dt_format)
+
+    def _select_statement(self, table:str, *, colset:list=None, filterby:dict=None, orderby:dict=None, offset:int=None, limit:float=None, count:bool=False, join:list=None):
+        """Statement of select (shared by Conexion and AsyncConexion) and the keys of the result rows
+        (None: names of the statement columns)"""
         _table = self._get_table(table)
+        if self._lower_cols:
+            colset = self._to_lower_cols(colset)
+        # Columns can be referenced by name: base table columns, or "table.column" with join
+        source = self._join(_table, join) if join else _table
+        is_join = isinstance(source, _JoinSource)
+        columns_table = list(source.c.keys())
+        colnames = None
+
         if count:
-            statement = db_select(func.count('*')).select_from(_table)
+            statement = db_select(func.count('*')).select_from(source.from_ if is_join else _table)
         elif colset:
-            if self._lower_cols:
-                colset = self._to_lower_cols(colset)
-            statement = db_select(*self._colset(_table, colset))
+            statement = db_select(*self._colset(source, colset))
+            if is_join:
+                colnames = [col for col in colset if col in source.c] or list(source.default)
+        elif is_join:
+            statement = db_select(*[source.c[col] for col in source.default])
+            colnames = list(source.default)
         else:
             statement = db_select(_table)
 
-        columns_table = self._get_columns(_table)
-
-        if self._lower_cols and colset:
-            colset = self._to_lower_cols(colset)
+        if is_join and not count:
+            # Without it the FROM would be every table of the columns (cross join)
+            statement = statement.select_from(source.from_)
 
         if self._raise and colset:
             cols_error = list(filter(lambda x: x not in columns_table, colset))
@@ -201,41 +248,100 @@ class Conexion:
             if self._lower_cols:
                 filterby = self._to_lower_cols(filterby)
             if self._raise:
-                if isinstance(filterby, list):
-                    cols = [item for sublist in [[x.get("key")] if x.get("key") else list(x.keys()) for x in filterby] for item in sublist]
-                    cols_error = list(filter(lambda x: x not in columns_table, cols))
-                else:
-                    cols_error = list(filter(lambda x: x not in columns_table, filterby.keys()))
+                cols_error = list(filter(lambda x: x not in columns_table, self._cols_in_filter(filterby)))
                 if any(cols_error): raise DbException(error(f"filterby: Cols: {', '.join(cols_error)} not find in table", 400)) from None
-                
-            statement = self._filterby(_table, statement, columns_table, filterby)
-        
+
+            statement = self._filterby(source, statement, columns_table, filterby)
+
         if orderby and not count:
             if self._lower_cols:
                 orderby = self._to_lower_cols(orderby)
-            statement = self._orderby(statement, _table, orderby)
-        
+            statement = self._orderby(statement, source, orderby)
+
         if offset and not count:
             statement = self._offset(statement, offset, _table)
-        
+
         if limit and not count:
             statement = self._limit(statement, limit)
 
-        with self._session() as session:
-            self._show_query(statement)
-            result = session.execute(statement).all()
+        return statement, colnames
+
+    def _select_result(self, statement, result, colnames:list=None, *, count:bool=False, send_colnames:bool=True, dt_format:str=None):
         if dt_format:
             result = [[col.strftime(dt_format) if isinstance(col, datetime) else col for col in row] for row in result]
-        
+
         if send_colnames:
-            columns_colset = self._get_columns(statement)
+            if colnames is None:
+                colnames = self._get_columns(statement)
             if self._ret_upper_cols:
-                columns_colset = self._to_upper_cols(columns_colset)
-            result = self._colnames(columns_colset, result)
-            return result[0] if count else result
+                colnames = self._to_upper_cols(colnames)
+            result = self._colnames(colnames, result)
         else:
             result = list(map(list,result))
-            return result[0] if count else result
+        return result[0] if count else result
+
+    def _join(self, _table, join) -> "_JoinSource":
+        """FROM with the joins and the columns it can use.
+
+        join: {"table": name, "type": "inner" | "left" | "right", "on": {column: joined column}} or a list of them,
+        applied in order. "on" keys are columns of the tables already joined (base table columns by name, the
+        others as "table.column"), values columns of the joined table. Without "on" the foreign keys are used"""
+        if isinstance(join, dict):
+            join = [join]
+        if not isinstance(join, list) or not all(isinstance(item, dict) for item in join):
+            raise DbException(error("join: must be an object or a list of objects", 400)) from None
+
+        source = _JoinSource(_table)
+        for item in join:
+            unknown = set(item) - set(_JOIN_KEYS)
+            if unknown:
+                raise DbException(error(f"join: unknown keys {sorted(unknown)}, valid: {list(_JOIN_KEYS)}", 400)) from None
+            name = item.get("table")
+            if not isinstance(name, str) or not name:
+                raise DbException(error("join: table is required", 400)) from None
+            type_ = item.get("type", "inner")
+            if type_ not in _JOIN_TYPES:
+                raise DbException(error(f"join: type {type_!r} not valid, valid: {list(_JOIN_TYPES)}", 400)) from None
+            joined = self._get_table(name)
+            if joined.name in source.tables:
+                raise DbException(error(f"join: table {name} is already in the select", 400)) from None
+
+            on = item.get("on")
+            onclause = self._join_on(source, joined, on) if on is not None else None
+            try:
+                if type_ == "right":
+                    # A RIGHT JOIN B == B LEFT JOIN A: same rows in every backend, the column order is kept by the select
+                    source.from_ = joined.join(source.from_, onclause, isouter=True)
+                else:
+                    source.from_ = source.from_.join(joined, onclause, isouter=type_ == "left")
+            except ArgumentError as e:
+                # No (or more than one) foreign key between the tables and no "on"
+                raise DbException(error(f"join: {name}: {e}", 400)) from None
+            source.add(joined)
+        return source
+
+    def _join_on(self, source:"_JoinSource", joined, on):
+        if not isinstance(on, dict) or not on:
+            raise DbException(error("join: on must be an object {column: joined table column}", 400)) from None
+        conditions = []
+        for left, right in on.items():
+            if not isinstance(right, str):
+                raise DbException(error(f"join: on: {left}: the joined column must be a name", 400)) from None
+            if self._lower_cols:
+                left, right = left.lower(), right.lower()
+            left_col = source.c.get(left)
+            right_col = joined.c.get(right)
+            if right_col is None and "." in right:
+                table_, _, col = right.rpartition(".")
+                if (table_.lower() if self._lower_table else table_) == joined.name:
+                    right_col = joined.c.get(col)
+            # Always an error, even without _raise: a discarded condition would join every row
+            if left_col is None:
+                raise DbException(error(f"join: on: column {left} not find", 400)) from None
+            if right_col is None:
+                raise DbException(error(f"join: on: column {right} not find in table {joined.name}", 400)) from None
+            conditions.append(left_col == right_col)
+        return db_and(*conditions)
 
     def insert(self, table:str, data:list, **kwargs):
         self._require_writable()
@@ -437,11 +543,13 @@ class Conexion:
             raise DbException(error("filterby: no valid conditions, refusing to affect the whole table", 400)) from None
 
     def _orderby(self, statement, _table, orderby):
-        valid_columns = self._valid_columns(_table, orderby.keys())
-        if valid_columns:
-            statement = statement.order_by(
-                *[desc(column) if orderby.get(column.name, False) else column for column in valid_columns]
-            )
+        order = []
+        for name, descending in orderby.items():
+            if self._valid_columns(_table, [name]):
+                column = _table.c.get(name)
+                order.append(desc(column) if descending else column)
+        if order:
+            statement = statement.order_by(*order)
         return statement
 
     def _colset(self, _table, colset):
@@ -452,7 +560,7 @@ class Conexion:
         else:
             if self._raise:
                 raise DbException(error(f"none of the columns are valid, columns: {', '.join(colset)}", 400)) from None
-            return [_table]
+            return [_table.c[col] for col in _table.default] if isinstance(_table, _JoinSource) else [_table]
     
     def _filterby(self, table, statement, columns, filterby):
         if isinstance(filterby, list):

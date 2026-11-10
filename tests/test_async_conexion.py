@@ -86,3 +86,16 @@ def test_async_offset_without_orderby(async_db_cfg):
         async with _cnx(async_db_cfg) as cnx:
             return await cnx.select("users", offset=1)
     assert len(run(main())) == 3
+
+
+def test_async_join(async_db_cfg, orders_table):
+    async def main():
+        async with _cnx(async_db_cfg) as cnx:
+            return await cnx.select(
+                "users", colset=["name", "orders.total"],
+                join=[{"table": "orders", "type": "left", "on": {"id": "user_id"}}],
+                orderby={"id": False, "orders.id": False},
+            )
+    assert [(r["name"], r["orders.total"]) for r in run(main())] == [
+        ("ana", 10), ("ana", 20), ("luis", 5), ("marta", None), ("pepa", None),
+    ]

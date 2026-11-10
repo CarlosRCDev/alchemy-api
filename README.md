@@ -112,6 +112,33 @@ Types: `==`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not_in`, `is`, `is_not`, `like`,
 
 `orderby={"col": True}` is descending, `False` ascending.
 
+### Join
+
+`select` accepts `join`: an object or a list of objects `{"table", "type", "on"}`, applied in order.
+
+```python
+cnx.select(
+    "users",
+    colset=["name", "orders.total"],
+    join=[{"table": "orders", "type": "left", "on": {"id": "user_id"}}],
+    filterby={"orders.total": {"type": ">", "value": 8}},
+    orderby={"orders.id": False},
+)
+# [{"name": "ana", "orders.total": 10}, {"name": "ana", "orders.total": 20}]
+```
+
+- `type`: `inner` (default), `left` or `right`. A right join is run as the equivalent left join with the
+  tables swapped, so it works on every backend (old sqlite and MySQL included); columns keep their order.
+- `on`: `{column: joined column}`, several pairs are AND. Keys are columns of the tables already in the
+  select (base table columns by name, the others as `"table.column"`), values columns of the joined table.
+  Without `on` the foreign key between the tables is used (400 if there is none or more than one).
+  An unknown `on` column is always a 400, also with `_raise=False`: dropping it would join every row.
+- With `join`, joined columns are `"table.column"` in `colset`, `filterby` and `orderby`, and that is
+  also their key in the returned rows. Base table columns keep their plain name (`"users.name"` also works).
+  Without `colset` every column of every table is returned.
+- `count`, `offset`, `limit` and `dt_format` work as without join. Each table can appear only once
+  (no self joins).
+
 ## REST api with Flask
 
 ```python
@@ -150,7 +177,7 @@ app.include_router(api_log_delete, prefix="/delete_log")
 | GET | `/db/permissions` | | none: every role can ask for its own |
 | GET | `/db/tables` | | `tables` |
 | POST | `/db/schema` | `{"table": "users"}` | `schema` |
-| POST | `/db/select` | `{"table": "users", "filterby": {...}, "orderby": {...}, "colset": [...]}` | `select` |
+| POST | `/db/select` | `{"table": "users", "filterby": {...}, "orderby": {...}, "colset": [...], "join": [...]}` | `select` |
 | POST | `/db/insert` | `{"table": "users", "data": [{...}]}` | `insert` |
 | POST | `/db/update` | `{"table": "users", "data": {...}, "filterby": {...}}` | `update` |
 | POST | `/db/delete` | `{"table": "users", "filterby": {...}}` | `delete` |
@@ -228,6 +255,7 @@ When a key is used by some role, a role without it gets nothing for that control
 | `get_role` returns `None` | 401 |
 | Role unknown or without the operation | 403 |
 | `schema`, `select`, `insert`, `update`, `delete` on a table not listed for the role | 403 |
+| `select` with `join` on a table not listed for the role | 403 (every joined table is checked) |
 | `GET /db/tables` | only the tables and views the role can use |
 | `GET /db/permissions` | `{"role": "reader", "operations": [...], "tables": [...]}`, what the role can really do |
 | `POST /db/sql` with table control | only roles with `"tables": ["*"]` (raw SQL can touch any table), otherwise 403 |
@@ -248,7 +276,7 @@ can query and edit the database with the same operations and permissions as the 
 | `my_permissions` | none | role, operations and tables of the server, like `GET /db/permissions` |
 | `list_tables` | `tables` | only the tables and views the role can use |
 | `describe_table` | `schema` | `{"columns": [{name, type, primary_key, nullable, default}], "indexes": [...], "foreign_keys": [...]}` |
-| `select` | `select` | `{"rows": [...], "n_rows": n}`, at most `--max-rows` rows (default 1000) |
+| `select` | `select` | `{"rows": [...], "n_rows": n}`, at most `--max-rows` rows (default 1000); `join` needs every joined table |
 | `insert` | `insert` | |
 | `update` | `update` | `filterby` required |
 | `delete` | `delete` | `filterby` required |

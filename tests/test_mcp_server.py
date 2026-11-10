@@ -191,3 +191,13 @@ def test_my_permissions(cnx):
     result = call(create_mcp(cnx, roles=roles, tables=tables, role="reader"), "my_permissions")
     assert result == {"role": "reader", "operations": ["select", "tables"], "tables": ["users"]}
 
+
+
+def test_select_join(cnx_orders, roles, tables):
+    join = [{"table": "orders", "type": "inner", "on": {"id": "user_id"}}]
+    result = call(create_mcp(cnx_orders), "select", table="users", colset=["name", "orders.total"], join=join, orderby={"orders.id": False})
+    assert result == {"rows": [{"name": "ana", "orders.total": 10}, {"name": "ana", "orders.total": 20}, {"name": "luis", "orders.total": 5}], "n_rows": 3}
+    # Joined tables need the table permission too
+    mcp = create_mcp(cnx_orders, roles=roles, tables={**tables, "reader": frozenset({"users"})}, role="reader")
+    with pytest.raises(ToolError, match="status 403"):
+        run(mcp.call_tool("select", {"table": "users", "join": join}))

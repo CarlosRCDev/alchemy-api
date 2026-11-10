@@ -131,6 +131,19 @@ def check_table(tables:dict | None, get_role, role:str | None, table:str | None)
         raise DbException(error(f"Role {role!r} can not use {target}", 403, False)) from None
 
 
+def join_tables(join) -> list[str]:
+    """Table names of the join argument of select, to check them with check_table like the main table"""
+    if join is None:
+        return []
+    items = [join] if isinstance(join, dict) else join
+    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+        raise DbException(error("join: must be an object or a list of objects", 400)) from None
+    names = [item.get("table") for item in items]
+    if not all(isinstance(name, str) and name for name in names):
+        raise DbException(error("join: table is required", 400)) from None
+    return names
+
+
 def role_permissions(cnx, roles:dict | None, tables:dict | None, get_role, role:str | None,
                      allow_raw_sql:bool=False) -> dict:
     """What the role can really do: {"role": ..., "operations": [...], "tables": [...]}.

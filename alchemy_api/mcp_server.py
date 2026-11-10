@@ -32,7 +32,7 @@ from mcp_types import ToolAnnotations
 from starlette.responses import JSONResponse
 
 from . import __version__
-from .permissions import check_permission, check_table, filter_tables, role_permissions
+from .permissions import check_permission, check_table, filter_tables, join_tables, role_permissions
 from .utils import DbException, env_bool, read_cnx_data
 
 _logger = logging.getLogger(__name__)
@@ -144,6 +144,9 @@ def create_mcp(cnx, *, roles:dict=None, tables:dict=None, role:str=None, allow_r
 colset: columns to return (default all). orderby: {{"col": true}} descending, false ascending.
 limit: rows (max {max_rows}, default {max_rows}); a value below 1 is a percentage.
 count: true returns only {{"count": n}}.
+join: [{{"table": "orders", "type": "inner" | "left" | "right", "on": {{"id": "user_id"}}}}], "on" maps columns of
+the tables already joined to columns of the joined table (without "on" the foreign keys are used). With join,
+joined columns are "table.column" in colset, filterby, orderby and in the returned rows.
 {_FILTER_HELP}""")
         async def select(
             table:str,
@@ -153,13 +156,17 @@ count: true returns only {{"count": n}}.
             offset:int | None = None,
             limit:float | None = None,
             count:bool = False,
+            join:list[dict[str, Any]] | None = None,
         ):
             guard("select", table)
+            # Joined tables need the same table permission as the main one
+            for join_table in join_tables(join):
+                guard("select", join_table)
             if limit is None or limit >= 1:
                 limit = min(int(limit or max_rows), max_rows)
             result = await _call(
                 cnx.select, table, colset=colset, filterby=filterby, orderby=orderby,
-                offset=offset, limit=limit, count=count,
+                offset=offset, limit=limit, count=count, join=join,
             )
             return result if count else _rows(result)
 

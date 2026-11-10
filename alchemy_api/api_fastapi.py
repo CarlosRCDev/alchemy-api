@@ -1,12 +1,12 @@
 from inspect import iscoroutinefunction
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, StrictBool
 
-from .permissions import check_permission, check_table, filter_tables, role_permissions
+from .permissions import check_permission, check_table, filter_tables, join_tables, role_permissions
 from .utils import DbException, error
 ### FUNCTIONS ###
 # Equivalent of api_db.py for FastAPI. The connection (Conexion or AsyncConexion)
@@ -84,8 +84,15 @@ def _check_table(request: Request, table: str | None):
     )
 
 
+class JoinBody(BaseModel):
+    table: str
+    type: Literal["inner", "left", "right"] = "inner"
+    on: dict[str, str] | None = None
+
+
 class SelectBody(BaseModel):
     table: str
+    join: list[JoinBody] | None = None
     colset: list[str] | None = None
     filterby: dict[str, Any] | list[dict[str, Any]] | None = None
     orderby: dict[str, bool] | None = None
@@ -126,6 +133,9 @@ class SqlBody(BaseModel):
 async def select(body: SelectBody, request: Request, cnx=Depends(get_cnx)):
     _check_table(request, body.table)
     db_data = body.model_dump(exclude_unset=True)
+    # Joined tables need the same table permission as the main one
+    for join_table in join_tables(db_data.get("join")):
+        _check_table(request, join_table)
     table = db_data.pop("table")
     return await _call(cnx.select, table=table, **db_data)
 

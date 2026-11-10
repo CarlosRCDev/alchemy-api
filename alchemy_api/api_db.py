@@ -2,7 +2,7 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request, make_response, current_app, g
 
-from .permissions import check_permission, check_table, filter_tables, role_permissions
+from .permissions import check_permission, check_table, filter_tables, join_tables, role_permissions
 from .utils import DbException, error
 ### FUNCTIONS ###
 # Connection in app.config["CNX"]. Optional permissions (operations and tables per role):
@@ -62,6 +62,9 @@ def select(db_data=None):
 
     if not table: raise DbException(error("Not table in post", 400)) from None
     _check_table(table)
+    # Joined tables need the same table permission as the main one
+    for join_table in join_tables(db_data.get("join")):
+        _check_table(join_table)
     result_db = current_app.config["CNX"].select(table=table, **db_data)
 
     return jsonify(result_db)
