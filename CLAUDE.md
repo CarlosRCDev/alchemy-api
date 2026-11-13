@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+OpenCode reads `AGENTS.md`, which mirrors this file: keep both in sync when workflow rules change.
+
 Library `sqlalchemy-rest-api` (imported as `alchemy_api`): CRUD with plain dicts plus ready-made
 Flask/FastAPI routes over **existing** databases via SQLAlchemy reflection (no models).
 Supports sqlite, PostgreSQL (psycopg), MariaDB and MySQL (pymysql/aiomysql), SQL Server (pymssql, sync only) and Oracle (oracledb).
@@ -31,12 +33,12 @@ backends because the container is down are not code failures.
 
 ## Layout
 
-- `alchemy_api/conexion.py` — `Conexion` (sync): reflection, `select/insert/update/delete/exec_sql/tables/schema`, filters, modifiers, rotated file log.
+- `alchemy_api/conexion.py` — `Conexion` (sync): reflection, `select` (incl. `join`)/`insert/update/delete/exec_sql/tables/schema`, filters, modifiers, rotated file log.
 - `alchemy_api/async_conexion.py` — `AsyncConexion(Conexion)`: same API, `async` methods, built with `await AsyncConexion.create(...)`.
-- `alchemy_api/api_db.py` — Flask blueprints (`api_db`, `api_log`, `api_log_delete`), config in `app.config["CNX"|"DB_ROLES"|"DB_GET_ROLE"|"DB_ALLOW_RAW_SQL"]`.
-- `alchemy_api/api_fastapi.py` — FastAPI routers, config in `app.state.cnx|roles|get_role|allow_raw_sql`; `_call` awaits async methods and runs sync ones in a threadpool.
+- `alchemy_api/api_db.py` — Flask blueprints (`api_db`, `api_log`, `api_log_delete`), config in `app.config["CNX"|"DB_ROLES"|"DB_TABLES"|"DB_GET_ROLE"|"DB_ALLOW_RAW_SQL"]`.
+- `alchemy_api/api_fastapi.py` — FastAPI routers, config in `app.state.cnx|roles|tables|get_role|allow_raw_sql`; `_call` awaits async methods and runs sync ones in a threadpool.
 - `alchemy_api/mcp_server.py` — MCP server (`mcp>=2.3`, `MCPServer`): `create_mcp(cnx, roles=, tables=, role=)` registers only the tools the role can use; `http_app` wraps it for streamable HTTP with a required bearer token (`MCP_TOKEN`); `main` is the `alchemy-api-mcp` command (stdio or http, `show_query` forced off). Mirror REST permission/guard changes here too.
-- `alchemy_api/permissions.py` — `read_permissions` ("permissions" settings -> roles map + tables map), `check_permission` / `check_table`.
+- `alchemy_api/permissions.py` — `read_permissions` ("permissions" settings -> roles map + tables map), `check_permission` / `check_table`, `join_tables` (every table in a `join` must be allowed).
 - `alchemy_api/utils.py` — `DbException`, `error` namedtuple, `read_cnx_data` (settings json/env vars -> engine args), `env_bool`.
 - `tests/settings/*.json` — one file per backend; `conftest.py` parametrizes every test with each file.
 - `example/` — runnable Flask/FastAPI/dict demos (`config.json`, `demo_data.py`).
@@ -58,7 +60,8 @@ backends because the container is down are not code failures.
 - **Optional dependencies**: the core install is only `sqlalchemy`. Never import flask, fastapi,
   greenlet, aiosqlite or drivers at module level from `conexion.py`, `utils.py` or `__init__.py`
   (`AsyncConexion` is lazy-loaded via `__getattr__`; `oracledb` is imported inside `read_cnx_data`).
-  New extras must also be added to the `all` extra in `pyproject.toml`.
+  New extras must also be added to the `all` extra in `pyproject.toml` and to `requirements.txt`
+  (`uv export --frozen --no-dev --all-extras --no-emit-project -o requirements.txt`).
 - **Oracle**: table/column names come back uppercase; `modifiers` (`lower_table`, `lower_cols`,
   `ret_upper_table`, `ret_upper_cols`) handle that. `limit < 1` means a percentage. Check new
   features against these modifiers.

@@ -29,3 +29,5 @@ deployments/config_mcp.json
 /openspec/
 /.opencode/
 /.agents/
+# /AGENTS.md
+# /CLAUDE.md
