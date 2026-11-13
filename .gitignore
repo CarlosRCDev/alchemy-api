@@ -28,8 +28,8 @@ deployments/config_mcp.json
 # opencode
 /.opencode/node_modules/
 /.opencode/plans/
-# /openspec/
-# /.opencode/
-# /.agents/
-# /AGENTS.md
-# /CLAUDE.md
+/openspec/
+/.opencode/
+/.agents/
+/AGENTS.md
+/CLAUDE.md
