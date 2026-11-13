@@ -26,8 +26,10 @@ deployments/config_jwt.json
 deployments/config_mcp.json
 
 # opencode
-/openspec/
-/.opencode/
-/.agents/
+/.opencode/node_modules/
+/.opencode/plans/
+# /openspec/
+# /.opencode/
+# /.agents/
 # /AGENTS.md
 # /CLAUDE.md
