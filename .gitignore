@@ -24,3 +24,8 @@ example/logdb/
 deployments/config.json
 deployments/config_jwt.json
 deployments/config_mcp.json
+
+# opencode
+/openspec/
+/.opencode/
+/.agents/
